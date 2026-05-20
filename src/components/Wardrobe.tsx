@@ -55,21 +55,50 @@ export function Wardrobe({ items, userId }: { items: WardrobeItem[], userId: str
 
     // Asynchronously replace with AI suggestions
     try {
+      const existingLooks = items.filter(i => i.type === 'Look').map(i => ({
+        id: i.id,
+        category: i.category,
+        color: i.color,
+        tags: i.tags
+      }));
+
       const analyzeRes = await fetch('/api/analyze-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: croppedImageBase64, language: i18n.language })
+        body: JSON.stringify({ imageBase64: croppedImageBase64, language: i18n.language, existingLooks })
       });
       const aiData = await analyzeRes.json();
       
+      const isDuplicate = aiData.type === 'Duplicate';
+      const finalType = isDuplicate ? 'Duplicate' : (aiData.type === 'Look' ? 'Look' : 'Item');
+
       await updateDoc(newRef, {
-        type: aiData.type === 'Look' ? 'Look' : 'Item',
+        type: finalType,
         category: aiData.category || "Other",
         color: aiData.color || "Unknown",
         tags: aiData.tags || [],
         rating: aiData.rating || 0,
         advice: aiData.advice || ""
       });
+
+      if (aiData.type === 'Look' && aiData.extractedItems && Array.isArray(aiData.extractedItems)) {
+        const itemPromises = aiData.extractedItems.map(async (extractedItem: any) => {
+          const itemRef = doc(collection(db, `users/${userId}/wardrobeItems`));
+          return setDoc(itemRef, {
+            userId,
+            imageUrl: croppedImageBase64, // using original image
+            type: "Item",
+            category: extractedItem.category || extractedItem.name || "Unknown",
+            color: extractedItem.color || "Unknown",
+            source: activeTab,
+            tags: [extractedItem.attributes].filter(Boolean),
+            rating: 0, // No rating yet for extracted items
+            advice: t('extracted_from_look', 'Extracted from Look'),
+            createdAt: serverTimestamp()
+          });
+        });
+        await Promise.all(itemPromises);
+      }
       
       toast.success(t('analyzed', 'AI assessment complete!'), { id: toastId });
     } catch (e: any) {
@@ -131,7 +160,7 @@ export function Wardrobe({ items, userId }: { items: WardrobeItem[], userId: str
             isDragActive ? 'border-cyan-400 bg-cyan-400/5' : 'border-slate-700 bg-slate-800/20 hover:border-slate-500 hover:bg-slate-800/40'
           } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
         >
-          <input {...getInputProps()} />
+          <input {...getInputProps({ multiple: true })} />
           <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center mb-4 border border-slate-700 group-hover:scale-110 transition-transform">
             <UploadCloud className="text-cyan-400" size={24} />
           </div>

@@ -21,7 +21,11 @@ async function getPrompt(id: string, fallback: string): Promise<string> {
   try {
     const doc = await dbAdmin.collection('prompts').doc(id).get();
     if (doc.exists) {
-      return doc.data()?.text || fallback;
+      const data = doc.data();
+      if (data?.useAdminText && data?.adminText) {
+        return data.adminText;
+      }
+      return data?.text || fallback;
     }
   } catch (e) {
     // Silently fallback
@@ -47,17 +51,22 @@ async function startServer() {
   // API Routes
   app.post("/api/analyze-image", async (req, res) => {
     try {
-      const { imageBase64, language } = req.body;
+      const { imageBase64, language, existingLooks } = req.body;
       
       const defaultPrompt = `Analyze this image which contains either a single clothing item or a full outfit/look. 
         Language: ${language === 'ru' ? 'Russian' : 'Azerbaijani'}
         Determine whether it's a single item ('Item') or a full ready-made look/outfit ('Look').
         If it's an Item, provide its category and color.
-        If it's a Look, provide its overall style as category (e.g. 'Casual', 'Business', 'Streetwear'), its main color palette as color, and extract up to 5 clothing items clearly visible in the look as an array of tags.
-        FOR BOTH 'Item' and 'Look':
+        If it's a Look, provide its overall style as category (e.g. 'Casual', 'Business', 'Streetwear'), its main color palette as color, and extract up to 5 clothing items clearly visible in the look. Use the extracted items to count what is worn.
+        FOR 'Look' ONLY:
+        - We provide a list of existing looks the user has: ${existingLooks ? JSON.stringify(existingLooks) : '[]'}.
+        - CHECK carefully: if the clothing items being worn in this new image are exactly the same as one of the existing looks, return type as 'Duplicate'.
+        - If it is a 'Duplicate', set the 'advice' string to tell the user to delete this copy ("This is a duplicate of a previously uploaded look. Delete it."). Do not provide a rating. 
+        FOR BOTH 'Item' and 'Look' (if not Duplicate):
         - Automatically rate it from 1.0 to 5.0 (fractional allowed). For a Look, rate the overall appearance. For an Item, rate its versatility, style, and condition.
-        - Provide an "advice" string. Explain briefly how these clothes combine (or what this item combines well with), what does NOT combine with it, and why this rating is given. Keep it concise.
-        - DO NOT provide tips on what to buy or how to improve it yet. That will be asked later.
+        - Provide an "advice" string. Explain how these clothes fit together (or what this item combines well with), what does NOT combine with it, and why this rating is given. Mention the number of items and what they are. Keep it concise.
+        FOR 'Look' ONLY (if not Duplicate):
+        - Provide an array 'extractedItems'. Each object should have 'name', 'category', 'color', and 'attributes' (brief description of texture, pattern etc).
         Translate all string values into the given Language.`;
 
       const prompt = await getPrompt('analyze-image', defaultPrompt);
@@ -73,7 +82,7 @@ async function startServer() {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              type: { type: Type.STRING, enum: ["Item", "Look"] },
+              type: { type: Type.STRING, enum: ["Item", "Look", "Duplicate"] },
               category: { type: Type.STRING },
               color: { type: Type.STRING },
               tags: {
@@ -82,9 +91,22 @@ async function startServer() {
                 description: "List of clothing items visible in the image if it is a Look"
               },
               rating: { type: Type.NUMBER, description: "Rating from 1.0 to 5.0" },
-              advice: { type: Type.STRING, description: "Explanation of combinations and why this rating is given" }
+              advice: { type: Type.STRING, description: "Explanation of combinations and why this rating is given" },
+              extractedItems: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    color: { type: Type.STRING },
+                    attributes: { type: Type.STRING }
+                  }
+                },
+                description: "Detailed extracted items for Look"
+              }
             },
-            required: ["type", "category", "color", "tags", "rating", "advice"]
+            required: ["type", "category", "color", "tags", "advice"]
           }
         }
       });

@@ -152,7 +152,7 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
     <div className="flex flex-col gap-2">
       <div 
         ref={dragRef as any}
-        className={`group relative rounded-3xl overflow-hidden bg-slate-800 border border-slate-700 aspect-[3/4] cursor-grab active:cursor-grabbing hover:border-cyan-400/50 transition-all ${isDragging ? 'opacity-50 scale-95' : ''}`}
+        className={`group relative rounded-3xl overflow-hidden bg-slate-800 border ${item.type === 'Duplicate' ? 'border-red-500/50' : 'border-slate-700 hover:border-cyan-400/50'} aspect-[3/4] cursor-grab active:cursor-grabbing transition-all ${isDragging ? 'opacity-50 scale-95' : ''}`}
       >
         <img 
            src={item.imageUrl} 
@@ -196,6 +196,13 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
         </div>
       </div>
       
+      {item.type === 'Duplicate' ? (
+        <div className="px-1 py-1">
+          <p className="text-red-400 font-bold text-xs uppercase text-center">{t('delete', 'DELETE')}</p>
+          <p className="text-red-400/70 text-[10px] text-center">{item.advice || t('copy_detected', 'Copy detected')}</p>
+        </div>
+      ) : (
+      <>
       {/* Action Row Under Photo */}
       <div className="flex items-center justify-between px-1 h-6">
         {item.rating ? (
@@ -279,6 +286,8 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
 
       {editingImage && (

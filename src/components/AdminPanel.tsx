@@ -10,6 +10,8 @@ interface Prompt {
   description: string;
   trigger: string;
   text: string;
+  adminText?: string;
+  useAdminText?: boolean;
   updatedAt: any;
 }
 
@@ -22,11 +24,16 @@ const DEFAULT_PROMPTS: Record<string, Omit<Prompt, 'updatedAt'>> = {
     text: `Analyze this image which contains either a single clothing item or a full outfit/look. 
 Determine whether it's a single item ('Item') or a full ready-made look/outfit ('Look').
 If it's an Item, provide its category and color.
-If it's a Look, provide its overall style as category (e.g. 'Casual', 'Business', 'Streetwear'), its main color palette as color, and extract up to 5 clothing items clearly visible in the look as an array of tags.
-FOR BOTH 'Item' and 'Look':
+If it's a Look, provide its overall style as category (e.g. 'Casual', 'Business', 'Streetwear'), its main color palette as color, and extract up to 5 clothing items clearly visible in the look. Use the extracted items to count what is worn.
+FOR 'Look' ONLY:
+- We provide a list of existing looks the user has: \${existingLooks ? JSON.stringify(existingLooks) : '[]'}.
+- CHECK carefully: if the clothing items being worn in this new image are exactly the same as one of the existing looks, return type as 'Duplicate'.
+- If it is a 'Duplicate', set the 'advice' string to tell the user to delete this copy ("This is a duplicate of a previously uploaded look. Delete it."). Do not provide a rating. 
+FOR BOTH 'Item' and 'Look' (if not Duplicate):
 - Automatically rate it from 1.0 to 5.0 (fractional allowed). For a Look, rate the overall appearance. For an Item, rate its versatility, style, and condition.
-- Provide an "advice" string. Explain briefly how these clothes combine (or what this item combines well with), what does NOT combine with it, and why this rating is given. Keep it concise.
-- DO NOT provide tips on what to buy or how to improve it yet. That will be asked later.
+- Provide an "advice" string. Explain how these clothes fit together (or what this item combines well with), what does NOT combine with it, and why this rating is given. Mention the number of items and what they are. Keep it concise.
+FOR 'Look' ONLY (if not Duplicate):
+- Provide an array 'extractedItems'. Each object should have 'name', 'category', 'color', and 'attributes' (brief description of texture, pattern etc).
 Translate all string values into the given Language.`
   },
   'evaluate-outfit': {
@@ -102,43 +109,65 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleSave = async (p: Prompt) => {
+  const handleToggle = async (p: Prompt) => {
+    try {
+      const newValue = !p.useAdminText;
+      // immediate local update
+      setPrompts(prev => prev.map(i => i.id === p.id ? { ...i, useAdminText: newValue } : i));
+      
+      await setDoc(doc(db, 'prompts', p.id), {
+        ...p,
+        text: DEFAULT_PROMPTS[p.id].text,
+        description: DEFAULT_PROMPTS[p.id].description,
+        trigger: DEFAULT_PROMPTS[p.id].trigger,
+        useAdminText: newValue,
+        adminText: p.adminText || DEFAULT_PROMPTS[p.id].text,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      
+      toast.success(newValue ? 'Switched to Admin override' : 'Switched to AI Preset');
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to toggle prompt mode');
+      fetchPrompts(); // revert on fail
+    }
+  };
+
+  const saveAdminText = async (p: Prompt, newText: string) => {
     setSaving(p.id);
     try {
       await setDoc(doc(db, 'prompts', p.id), {
         ...p,
+        text: DEFAULT_PROMPTS[p.id].text,
+        description: DEFAULT_PROMPTS[p.id].description,
+        trigger: DEFAULT_PROMPTS[p.id].trigger,
+        adminText: newText,
         updatedAt: serverTimestamp()
-      });
-      toast.success(`${p.title} saved`);
+      }, { merge: true });
     } catch (e) {
       console.error(e);
-      toast.error('Save failed');
+      toast.error('Failed to save text');
     } finally {
       setSaving(null);
     }
   };
 
-  const handleSeed = async (mode: 'all' | 'meta' = 'all') => {
+  const handleInit = async () => {
     setLoading(true);
     try {
       for (const key in DEFAULT_PROMPTS) {
-        const existing = prompts.find(pr => pr.id === key);
-        const dataToSave = mode === 'all' 
-          ? { ...DEFAULT_PROMPTS[key], updatedAt: serverTimestamp() }
-          : { 
-              ...(existing || DEFAULT_PROMPTS[key]), 
-              description: DEFAULT_PROMPTS[key].description, 
-              trigger: DEFAULT_PROMPTS[key].trigger,
-              updatedAt: serverTimestamp() 
-            };
-
-        await setDoc(doc(db, 'prompts', key), dataToSave);
+        await setDoc(doc(db, 'prompts', key), {
+          ...DEFAULT_PROMPTS[key],
+          adminText: DEFAULT_PROMPTS[key].text,
+          useAdminText: false,
+          updatedAt: serverTimestamp()
+        });
       }
-      toast.success(mode === 'all' ? 'All prompts reset to default' : 'Triggers & descriptions updated');
+      toast.success('Database initialized');
       fetchPrompts();
     } catch (e) {
       console.error(e);
-      toast.error('Seed failed');
+      toast.error('Init failed');
     } finally {
       setLoading(false);
     }
@@ -170,37 +199,6 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
              </div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="flex items-center bg-slate-800 rounded-xl overflow-hidden p-1">
-                <button 
-                   onClick={() => {
-                     if (confirm('Обновить описание и триггеры всех промптов? (Безопасный сброс)')) {
-                       if (confirm('Вы точно уверены? Это обновит только описание и информацию о триггерах, основной текст промптов останется прежним.')) {
-                          handleSeed('meta');
-                       }
-                     }
-                   }} 
-                   className="px-4 py-2 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
-                   title="Обновить только описание и механизмы триггеров"
-                >
-                   <ShieldCheck size={14} />
-                   Безопасный сброс
-                </button>
-                <div className="w-[1px] h-4 bg-slate-700" />
-                <button 
-                   onClick={() => {
-                     if (confirm('ВНИМАНИЕ: Сбросить ВСЕ промпты к начальным настройкам?')) {
-                        if (confirm('ЭТО УДАЛИТ ВАШИ ИЗМЕНЕНИЯ В ТЕКСТЕ ПРОМПТОВ. Продолжить?')) {
-                           handleSeed('all');
-                        }
-                     }
-                   }} 
-                   className="px-4 py-2 hover:bg-red-500/10 text-slate-300 hover:text-red-400 text-[10px] font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
-                   title="Полный сброс всех промптов и текстов"
-                >
-                   <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                   Полный сброс
-                </button>
-             </div>
              <button onClick={onClose} className="p-2 text-slate-400 hover:text-white bg-slate-800 rounded-xl transition-colors">
                 <X size={20} />
              </button>
@@ -216,7 +214,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
           ) : prompts.length === 0 ? (
              <div className="text-center py-20 bg-slate-900/50 border border-dashed border-slate-800 rounded-3xl">
                 <p className="text-slate-500 mb-6">No prompts found in database.</p>
-                <button onClick={handleSeed} className="px-8 py-4 bg-cyan-500 text-slate-900 font-black uppercase tracking-widest text-xs rounded-full">Initialize Database</button>
+                <button onClick={handleInit} className="px-8 py-4 bg-cyan-500 text-slate-900 font-black uppercase tracking-widest text-xs rounded-full">Initialize Database</button>
              </div>
           ) : (
              prompts.map(p => (
@@ -226,54 +224,61 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                          <h3 className="text-lg font-black text-white uppercase tracking-tight">{p.title}</h3>
                          <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">{p.id}</p>
                       </div>
-                      <button 
-                        onClick={() => handleSave(p)} 
-                        disabled={saving === p.id}
-                        className="flex items-center gap-2 px-6 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-900 rounded-xl font-bold uppercase tracking-widest text-xs transition-all disabled:opacity-50"
-                      >
-                         {saving === p.id ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
-                         {saving === p.id ? 'Saving...' : 'Save Changes'}
-                      </button>
+                      <div className="flex items-center gap-3 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                         <span className={`text-xs font-bold uppercase tracking-widest ${!p.useAdminText ? 'text-cyan-400' : 'text-slate-500'}`}>AI Preset</span>
+                         <button 
+                            onClick={() => handleToggle(p)}
+                            className={`w-12 h-6 rounded-full relative transition-colors ${p.useAdminText ? 'bg-cyan-500' : 'bg-slate-700'}`}
+                         >
+                            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${p.useAdminText ? 'translate-x-6' : 'translate-x-0'}`} />
+                         </button>
+                         <span className={`text-xs font-bold uppercase tracking-widest ${p.useAdminText ? 'text-cyan-400' : 'text-slate-500'}`}>Admin</span>
+                      </div>
                    </div>
                    <div className="p-6 md:p-8 space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                            <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1">Description</label>
-                           <input 
-                              type="text" 
-                              value={p.description || ''}
-                              onChange={(e) => {
-                                 const newPrompts = prompts.map(i => i.id === p.id ? {...i, description: e.target.value} : i);
-                                 setPrompts(newPrompts);
-                              }}
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-slate-300 focus:border-cyan-500/50 outline-none transition-colors"
-                           />
+                           <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-slate-400">
+                              {DEFAULT_PROMPTS[p.id]?.description || p.description}
+                           </div>
                         </div>
                         <div>
                            <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1">Trigger Mechanism</label>
-                           <input 
-                              type="text" 
-                              value={p.trigger || ''}
-                              onChange={(e) => {
-                                 const newPrompts = prompts.map(i => i.id === p.id ? {...i, trigger: e.target.value} : i);
-                                 setPrompts(newPrompts);
-                              }}
-                              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-cyan-400 focus:border-cyan-500/50 outline-none transition-colors"
-                              placeholder="e.g. Automatic or User Request"
-                           />
+                           <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-cyan-500/80">
+                              {DEFAULT_PROMPTS[p.id]?.trigger || p.trigger}
+                           </div>
                         </div>
                       </div>
-                      <div>
-                         <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1">Prompt Text</label>
-                         <textarea 
-                            value={p.text || ''}
-                            onChange={(e) => {
-                               const newPrompts = prompts.map(i => i.id === p.id ? {...i, text: e.target.value} : i);
-                               setPrompts(newPrompts);
-                            }}
-                            rows={8}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-6 text-sm text-slate-300 font-mono leading-relaxed focus:border-cyan-500/50 outline-none transition-colors"
-                         />
+                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                         <div>
+                            <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1 flex flex-wrap gap-2 items-center justify-between">
+                               <span>AI Prompt {saving === p.id && <RefreshCw size={10} className="inline ml-2 animate-spin text-cyan-500" />}</span>
+                               {!p.useAdminText && <span className="text-cyan-400 flex items-center gap-1"><ShieldCheck size={12}/> Active</span>}
+                            </label>
+                            <textarea 
+                               readOnly
+                               value={DEFAULT_PROMPTS[p.id]?.text || p.text}
+                               rows={8}
+                               className={`w-full bg-slate-950 border ${!p.useAdminText ? 'border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.1)] text-slate-300' : 'border-slate-800 text-slate-500'} rounded-2xl p-6 text-sm font-mono leading-relaxed outline-none transition-all resize-y`}
+                            />
+                         </div>
+                         <div>
+                            <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1 flex flex-wrap gap-2 items-center justify-between">
+                               <span>Admin Override (Editable) </span>
+                               {p.useAdminText && <span className="text-cyan-400 flex items-center gap-1"><ShieldCheck size={12}/> Active</span>}
+                            </label>
+                            <textarea 
+                               value={p.adminText !== undefined ? p.adminText : (p.text || '')}
+                               onChange={(e) => {
+                                  const newPrompts = prompts.map(i => i.id === p.id ? {...i, adminText: e.target.value} : i);
+                                  setPrompts(newPrompts);
+                               }}
+                               onBlur={(e) => saveAdminText(p, e.target.value)}
+                               rows={8}
+                               className={`w-full bg-slate-950 border ${p.useAdminText ? 'border-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.1)] text-slate-300' : 'border-slate-800 focus:border-slate-600 text-slate-500 focus:text-slate-300'} rounded-2xl p-6 text-sm font-mono leading-relaxed outline-none transition-all resize-y`}
+                            />
+                         </div>
                       </div>
                    </div>
                 </div>

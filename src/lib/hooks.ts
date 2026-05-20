@@ -6,7 +6,7 @@ export interface WardrobeItem {
   id: string;
   userId: string;
   imageUrl: string;
-  type: 'Item' | 'Look';
+  type: 'Item' | 'Look' | 'Duplicate';
   category: string;
   color: string;
   source?: 'my' | 'internet';

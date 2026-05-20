@@ -4,7 +4,7 @@ import { initReactI18next } from 'react-i18next';
 const resources = {
   ru: {
     translation: {
-      "app_name": "StyleDeck / Персональный стилист",
+      "app_name": "Myluk / Персональный стилист",
       "home_title": "Витрина недели",
       "wardrobe": "Гардероб",
       "add_item": "Добавить вещь",
@@ -49,7 +49,7 @@ const resources = {
   },
   en: {
     translation: {
-      "app_name": "StyleDeck / Persona Stylist",
+      "app_name": "Myluk / Persona Stylist",
       "home_title": "Weekly Showcase",
       "wardrobe": "Wardrobe",
       "add_item": "Add Item",
@@ -94,7 +94,7 @@ const resources = {
   },
   az: {
     translation: {
-      "app_name": "StyleDeck / Şəxsi Stilist",
+      "app_name": "Myluk / Şəxsi Stilist",
       "home_title": "Həftəlik Vitrin",
       "wardrobe": "Qarderob",
       "add_item": "Əşya əlavə et",

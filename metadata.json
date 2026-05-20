@@ -1,5 +1,5 @@
 {
-  "name": "StyleDeck / Персональный стилист",
+  "name": "Myluk / Персональный стилист",
   "description": "Visual Style Assistant that helps users plan daily outfits, digitize their wardrobe, and receive AI-driven style recommendations in Russian and Azerbaijani.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
