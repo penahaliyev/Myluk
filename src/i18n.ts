@@ -1,0 +1,153 @@
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+
+const resources = {
+  ru: {
+    translation: {
+      "app_name": "StyleDeck / Персональный стилист",
+      "home_title": "Витрина недели",
+      "wardrobe": "Гардероб",
+      "add_item": "Добавить вещь",
+      "my_wardrobe": "Мой гардероб",
+      "sign_in_google": "Войти через Google",
+      "sign_out": "Выйти",
+      "monday": "Понедельник",
+      "tuesday": "Вторник",
+      "wednesday": "Среда",
+      "thursday": "Четверг",
+      "friday": "Пятница",
+      "saturday": "Суббота",
+      "sunday": "Воскресенье",
+      "archive": "Архив",
+      "replace_outfit": "Заменить образ",
+      "status_READY": "Готово",
+      "status_NEEDS_IMPROVEMENT": "Нужно улучшить",
+      "status_MISSING_ITEM": "Не хватает элемента",
+      "status_NOT_RECOMMENDED": "Не рекомендуется",
+      "status_AI_CHOICE": "Выбор AI",
+      "drop_text": "Перетащите вещи сюда для образа",
+      "category": "Категория",
+      "color": "Цвет",
+      "evaluate": "Оценить",
+      "improve": "Улучшить",
+      "no_items": "В гардеробе пока нет вещей",
+      "generating_evaluation": "ИИ думает...",
+      "recommendation": "Рекомендация по покупке:",
+      "unassigned": "Не назначено",
+      "saving": "Сохранение...",
+      "add_new_outfit": "Создать новый образ",
+      "loading": "Загрузка...",
+      "look": "Образ",
+      "generate_plan": "Составить план на неделю!",
+      "confirm_delete": "Удалить?",
+      "crop": "Обрезать",
+      "evaluated": "Оценено!",
+      "weather_loading": "Погода загружается...",
+      "weather_error": "Не удалось получить погоду",
+      "current_weather": "Сейчас в"
+    }
+  },
+  en: {
+    translation: {
+      "app_name": "StyleDeck / Persona Stylist",
+      "home_title": "Weekly Showcase",
+      "wardrobe": "Wardrobe",
+      "add_item": "Add Item",
+      "my_wardrobe": "My Wardrobe",
+      "sign_in_google": "Sign in with Google",
+      "sign_out": "Sign out",
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday",
+      "archive": "Archive",
+      "replace_outfit": "Replace Look",
+      "status_READY": "Ready",
+      "status_NEEDS_IMPROVEMENT": "Needs Improvement",
+      "status_MISSING_ITEM": "Missing Item",
+      "status_NOT_RECOMMENDED": "Not Recommended",
+      "status_AI_CHOICE": "AI Choice",
+      "drop_text": "Drop items here for look",
+      "category": "Category",
+      "color": "Color",
+      "evaluate": "Evaluate",
+      "improve": "Improve",
+      "no_items": "Wardrobe is empty",
+      "generating_evaluation": "AI is thinking...",
+      "recommendation": "Purchase Recommendation:",
+      "unassigned": "Unassigned",
+      "saving": "Saving...",
+      "add_new_outfit": "Create New Look",
+      "loading": "Loading...",
+      "look": "Look",
+      "generate_plan": "Generate Weekly Plan!",
+      "confirm_delete": "Delete?",
+      "crop": "Crop",
+      "evaluated": "Evaluated!",
+      "weather_loading": "Loading weather...",
+      "weather_error": "Failed to fetch weather",
+      "current_weather": "Currently in"
+    }
+  },
+  az: {
+    translation: {
+      "app_name": "StyleDeck / Şəxsi Stilist",
+      "home_title": "Həftəlik Vitrin",
+      "wardrobe": "Qarderob",
+      "add_item": "Əşya əlavə et",
+      "my_wardrobe": "Qarderobum",
+      "sign_in_google": "Google ilə daxil ol",
+      "sign_out": "Çıxış",
+      "monday": "Bazar ertəsi",
+      "tuesday": "Çərşənbə axşamı",
+      "wednesday": "Çərşənbə",
+      "thursday": "Cümə axşamı",
+      "friday": "Cümə",
+      "saturday": "Şənbə",
+      "sunday": "Bazar",
+      "archive": "Arxiv",
+      "replace_outfit": "Görünüşü dəyiş",
+      "status_READY": "Hazırdır",
+      "status_NEEDS_IMPROVEMENT": "İnkişaf etdirilməlidir",
+      "status_MISSING_ITEM": "Çatışmayan element",
+      "status_NOT_RECOMMENDED": "Tövsiyə edilmir",
+      "status_AI_CHOICE": "AI Seçimi",
+      "drop_text": "Görünüş üçün əşyaları buraya sürüşdürün",
+      "category": "Kateqoriya",
+      "color": "Rəng",
+      "evaluate": "Qiymətləndir",
+      "improve": "Təkmilləşdir",
+      "no_items": "Qarderobda hələ heç bir əşya yoxdur",
+      "generating_evaluation": "AI düşünür...",
+      "recommendation": "Alış üçün tövsiyə:",
+      "unassigned": "Təyin edilməyib",
+      "saving": "Yadda saxlanılır...",
+      "add_new_outfit": "Yeni görünüş yarat",
+      "loading": "Yüklənir...",
+      "look": "Görünüş",
+      "generate_plan": "Həftəlik plan yarat!",
+      "confirm_delete": "Silinsin?",
+      "crop": "Kəs",
+      "evaluated": "Qiymətləndirildi!",
+      "weather_loading": "Hava yüklənir...",
+      "weather_error": "Hava məlumatı alınmadı",
+      "current_weather": "Hazırda"
+    }
+  }
+};
+
+i18n
+  .use(initReactI18next)
+  .init({
+    resources,
+    lng: "ru", // default language
+    fallbackLng: "ru",
+    interpolation: {
+      escapeValue: false 
+    }
+  });
+
+  export default i18n;
