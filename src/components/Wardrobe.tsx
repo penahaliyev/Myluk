@@ -12,19 +12,30 @@ import { CropEditor } from './CropEditor';
 export function Wardrobe({ items, userId }: { items: WardrobeItem[], userId: string }) {
   const { t, i18n } = useTranslation();
   const [uploading, setUploading] = useState(false);
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+  const [imageSrcQueue, setImageSrcQueue] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'my' | 'internet'>('my');
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
-    const file = acceptedFiles[0];
-    const reader = new FileReader();
-    reader.addEventListener('load', () => setImageSrc(reader.result?.toString() || null));
-    reader.readAsDataURL(file);
+    const filesToProcess = acceptedFiles.slice(0, 10); // up to 10 files
+    
+    for (const file of filesToProcess) {
+      const reader = new FileReader();
+      const readPromise = new Promise<string>((resolve) => {
+        reader.addEventListener('load', () => resolve(reader.result?.toString() || ''));
+        reader.readAsDataURL(file);
+      });
+      const dataUrl = await readPromise;
+      if (dataUrl) {
+        setImageSrcQueue(prev => [...prev, dataUrl]);
+      }
+    }
   }, []);
 
+  const currentImageSrc = imageSrcQueue[0] || null;
+
   const handleUploadCropped = async (croppedImageBase64: string) => {
-    setImageSrc(null); // Close editor immediately
+    setImageSrcQueue(prev => prev.slice(1)); // Proceed to next image internally
     
     const newRef = doc(collection(db, `users/${userId}/wardrobeItems`));
     
@@ -69,7 +80,8 @@ export function Wardrobe({ items, userId }: { items: WardrobeItem[], userId: str
   const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
     onDrop,
     accept: { 'image/*': [] },
-    multiple: false
+    multiple: true,
+    maxFiles: 10
   } as any);
 
   const filteredItems = items.filter(item => {
@@ -105,11 +117,11 @@ export function Wardrobe({ items, userId }: { items: WardrobeItem[], userId: str
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 relative">
-        {imageSrc && (
+        {currentImageSrc && (
           <CropEditor 
-            imageSrc={imageSrc} 
+            imageSrc={currentImageSrc} 
             onConfirm={handleUploadCropped} 
-            onCancel={() => setImageSrc(null)}
+            onCancel={() => setImageSrcQueue(prev => prev.slice(1))}
           />
         )}
 
