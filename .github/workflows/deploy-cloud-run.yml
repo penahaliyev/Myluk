@@ -41,6 +41,7 @@ jobs:
           service: ${{ env.SERVICE }}
           region: ${{ env.REGION }}
           source: ./
+          flags: '--port=3000 --allow-unauthenticated'
 
       - name: Show Output
         run: echo ${{ steps.deploy.outputs.url }}
