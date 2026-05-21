@@ -99,7 +99,7 @@ export function ProfileModal({
             <div className="w-10 h-10 bg-cyan-500/20 rounded-xl flex items-center justify-center text-cyan-400">
                <User size={20} />
             </div>
-            <h3 className="text-xl font-black text-white uppercase tracking-tighter">Личный Кабинет</h3>
+            <h3 className="text-xl font-black text-white uppercase tracking-tighter">{t('home_tab_cabinet', 'Личный Кабинет')}</h3>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
             <X size={20} />

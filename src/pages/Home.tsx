@@ -54,7 +54,7 @@ export function Home() {
               }`}
             >
               <LayoutDashboard size={16} />
-              <span className="hidden sm:block">Гардероб & План</span>
+              <span className="hidden sm:block">{t('home_tab_wardrobe', 'Гардероб & План')}</span>
             </button>
             <button
               onClick={() => setActiveTab('shopping')}
@@ -65,7 +65,7 @@ export function Home() {
               }`}
             >
               <ShoppingBag size={16} />
-              <span className="hidden sm:block">Покупки</span>
+              <span className="hidden sm:block">{t('home_tab_shopping', 'Покупки')}</span>
               {shoppingList.length > 0 && (
                 <span className="bg-slate-900 text-cyan-400 px-2 py-0.5 rounded-full text-[10px]">
                   {shoppingList.length}
@@ -81,7 +81,7 @@ export function Home() {
                 className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-slate-700"
               >
                 <ShieldCheck size={16} className="text-cyan-400" />
-                <span className="hidden sm:block">Admin</span>
+                <span className="hidden sm:block">{t('home_tab_admin', 'Admin')}</span>
               </button>
             )}
 
@@ -90,7 +90,7 @@ export function Home() {
               className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-slate-700"
             >
               <Settings size={16} className="text-cyan-400" />
-              <span className="hidden sm:block">Кабинет</span>
+              <span className="hidden sm:block">{t('home_tab_cabinet', 'Кабинет')}</span>
             </button>
           </div>
         </div>

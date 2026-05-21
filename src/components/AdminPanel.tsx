@@ -3,6 +3,7 @@ import { collection, getDocs, doc, setDoc, serverTimestamp, query, orderBy } fro
 import { db, auth } from '../firebase';
 import { X, Save, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 interface Prompt {
   id: string;
@@ -84,7 +85,8 @@ Answer the user's fashion & styling questions using their wardrobe items as cont
   }
 };
 
-export function AdminPanel({ onClose }: { onClose: () => void }) {
+export function AdminPanel({ onClose }: { onClose: () => void }) { // force sync
+  const { t } = useTranslation();
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -178,9 +180,9 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
       <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6">
         <div className="bg-slate-900 border border-red-500/30 p-8 rounded-3xl max-w-sm w-full text-center">
            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-           <h2 className="text-xl font-black text-white uppercase tracking-tighter mb-2">Access Denied</h2>
-           <p className="text-slate-400 text-sm mb-6">This area is reserved for the administrator.</p>
-           <button onClick={onClose} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold uppercase tracking-widest text-xs">Close</button>
+           <h2 className="text-xl font-black text-white uppercase tracking-tighter mb-2">{t('admin_access_denied', 'Access Denied')}</h2>
+           <p className="text-slate-400 text-sm mb-6">{t('admin_restricted_msg', 'This area is reserved for the administrator.')}</p>
+           <button onClick={onClose} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold uppercase tracking-widest text-xs">{t('admin_close', 'Close')}</button>
         </div>
       </div>
     );
@@ -194,8 +196,8 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                 <ShieldCheck className="text-slate-900" size={24} />
              </div>
              <div>
-                <h1 className="text-xl font-black text-white uppercase tracking-tighter">AI Admin Panel</h1>
-                <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">Manage System Prompts</p>
+                <h1 className="text-xl font-black text-white uppercase tracking-tighter">{t('admin_title', 'AI Admin Panel')}</h1>
+                <p className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">{t('admin_subtitle', 'Manage System Prompts')}</p>
              </div>
           </div>
           <div className="flex items-center gap-3">
@@ -213,8 +215,8 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
              </div>
           ) : prompts.length === 0 ? (
              <div className="text-center py-20 bg-slate-900/50 border border-dashed border-slate-800 rounded-3xl">
-                <p className="text-slate-500 mb-6">No prompts found in database.</p>
-                <button onClick={handleInit} className="px-8 py-4 bg-cyan-500 text-slate-900 font-black uppercase tracking-widest text-xs rounded-full">Initialize Database</button>
+                <p className="text-slate-500 mb-6">{t('admin_no_prompts', 'No prompts found in database.')}</p>
+                <button onClick={handleInit} className="px-8 py-4 bg-cyan-500 text-slate-900 font-black uppercase tracking-widest text-xs rounded-full">{t('admin_init_db', 'Initialize Database')}</button>
              </div>
           ) : (
              prompts.map(p => (
@@ -225,26 +227,26 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                          <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">{p.id}</p>
                       </div>
                       <div className="flex items-center gap-3 bg-slate-950 p-2 rounded-xl border border-slate-800">
-                         <span className={`text-xs font-bold uppercase tracking-widest ${!p.useAdminText ? 'text-cyan-400' : 'text-slate-500'}`}>AI Preset</span>
+                         <span className={`text-xs font-bold uppercase tracking-widest ${!p.useAdminText ? 'text-cyan-400' : 'text-slate-500'}`}>{t('admin_ai_preset', 'AI Preset')}</span>
                          <button 
                             onClick={() => handleToggle(p)}
                             className={`w-12 h-6 rounded-full relative transition-colors ${p.useAdminText ? 'bg-cyan-500' : 'bg-slate-700'}`}
                          >
                             <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${p.useAdminText ? 'translate-x-6' : 'translate-x-0'}`} />
                          </button>
-                         <span className={`text-xs font-bold uppercase tracking-widest ${p.useAdminText ? 'text-cyan-400' : 'text-slate-500'}`}>Admin</span>
+                         <span className={`text-xs font-bold uppercase tracking-widest ${p.useAdminText ? 'text-cyan-400' : 'text-slate-500'}`}>{t('admin_override', 'Admin')}</span>
                       </div>
                    </div>
                    <div className="p-6 md:p-8 space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                           <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1">Description</label>
+                           <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1">{t('admin_desc', 'Description')}</label>
                            <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-slate-400">
                               {DEFAULT_PROMPTS[p.id]?.description || p.description}
                            </div>
                         </div>
                         <div>
-                           <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1">Trigger Mechanism</label>
+                           <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1">{t('admin_trigger', 'Trigger Mechanism')}</label>
                            <div className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-sm text-cyan-500/80">
                               {DEFAULT_PROMPTS[p.id]?.trigger || p.trigger}
                            </div>
@@ -253,8 +255,8 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                          <div>
                             <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1 flex flex-wrap gap-2 items-center justify-between">
-                               <span>AI Prompt {saving === p.id && <RefreshCw size={10} className="inline ml-2 animate-spin text-cyan-500" />}</span>
-                               {!p.useAdminText && <span className="text-cyan-400 flex items-center gap-1"><ShieldCheck size={12}/> Active</span>}
+                               <span>{t('admin_ai_prompt', 'AI Prompt')} {saving === p.id && <RefreshCw size={10} className="inline ml-2 animate-spin text-cyan-500" />}</span>
+                               {!p.useAdminText && <span className="text-cyan-400 flex items-center gap-1"><ShieldCheck size={12}/> {t('admin_active', 'Active')}</span>}
                             </label>
                             <textarea 
                                readOnly
@@ -265,8 +267,8 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                          </div>
                          <div>
                             <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-[0.2em] mb-2 px-1 flex flex-wrap gap-2 items-center justify-between">
-                               <span>Admin Override (Editable) </span>
-                               {p.useAdminText && <span className="text-cyan-400 flex items-center gap-1"><ShieldCheck size={12}/> Active</span>}
+                               <span>{t('admin_editable', 'Admin Override (Editable)')} </span>
+                               {p.useAdminText && <span className="text-cyan-400 flex items-center gap-1"><ShieldCheck size={12}/> {t('admin_active', 'Active')}</span>}
                             </label>
                             <textarea 
                                value={p.adminText !== undefined ? p.adminText : (p.text || '')}

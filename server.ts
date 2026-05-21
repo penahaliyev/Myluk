@@ -33,6 +33,38 @@ async function getPrompt(id: string, fallback: string): Promise<string> {
   return fallback;
 }
 
+function parseGeminiResponse(text: string) {
+  // Strip hallucinated base64 strings that bloat the JSON
+  let cleanedText = text.replace(/"(?:[A-Za-z0-9+\/]{4}){250,}(?:[A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=)?([ "])/g, '"$1');
+  
+  try {
+    return JSON.parse(cleanedText);
+  } catch (error: any) {
+    if (cleanedText.includes('```json')) {
+      const match = cleanedText.match(/```json\n([\s\S]*?)```/);
+      if (match) {
+        try {
+          return JSON.parse(match[1]);
+        } catch (e) {}
+      }
+    }
+    // Attempt to salvage truncated JSON (common when max tokens is reached)
+    let cleaned = cleanedText.trim();
+    if (cleaned.endsWith('",')) cleaned = cleaned.slice(0, -2) + '}';
+    if (!cleaned.endsWith('}')) cleaned += '"}';
+    
+    // One final trick: sometimes it truncates right in the middle of a massive string without quotes
+    cleaned = cleaned.replace(/,\s*"[^"]*$/, '}');
+
+    try {
+      return JSON.parse(cleaned);
+    } catch (salvageError) {
+      console.error("Failed to parse Gemini response payload:", cleanedText.slice(0, 1000) + '...');
+      throw new Error(`Invalid JSON format from AI: ${error.message}`);
+    }
+  }
+}
+
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
   httpOptions: {
@@ -42,7 +74,7 @@ const ai = new GoogleGenAI({
   }
 });
 
-async function startServer() {
+async function startServer() { // force sync
   const app = express();
   const PORT = 3000;
 
@@ -55,24 +87,29 @@ async function startServer() {
       
       const defaultPrompt = `Analyze this image which contains either a single clothing item or a full outfit/look. 
         Language: ${language === 'ru' ? 'Russian' : 'Azerbaijani'}
-        Determine whether it's a single item ('Item') or a full ready-made look/outfit ('Look').
+        Determine whether it's a single clothing piece mostly isolated ('Item') or a photo of a person/mannequin wearing a complete outfit ('Look'). Even if it's just a person wearing a top and pants, it MUST be classified as a 'Look'.
         If it's an Item, provide its category and color.
         If it's a Look, provide its overall style as category (e.g. 'Casual', 'Business', 'Streetwear'), its main color palette as color, and extract up to 5 clothing items clearly visible in the look. Use the extracted items to count what is worn.
         FOR 'Look' ONLY:
         - We provide a list of existing looks the user has: ${existingLooks ? JSON.stringify(existingLooks) : '[]'}.
-        - CHECK carefully: if the clothing items being worn in this new image are exactly the same as one of the existing looks, return type as 'Duplicate'.
+        - CHECK carefully: if the clothing layout, posture, and items worn in this new image tightly match the text tags of one of the existing looks, return type as 'Duplicate'. Let minor variations slide, we only want exact duplicates.
         - If it is a 'Duplicate', set the 'advice' string to tell the user to delete this copy ("This is a duplicate of a previously uploaded look. Delete it."). Do not provide a rating. 
         FOR BOTH 'Item' and 'Look' (if not Duplicate):
         - Automatically rate it from 1.0 to 5.0 (fractional allowed). For a Look, rate the overall appearance. For an Item, rate its versatility, style, and condition.
         - Provide an "advice" string. Explain how these clothes fit together (or what this item combines well with), what does NOT combine with it, and why this rating is given. Mention the number of items and what they are. Keep it concise.
         FOR 'Look' ONLY (if not Duplicate):
         - Provide an array 'extractedItems'. Each object should have 'name', 'category', 'color', and 'attributes' (brief description of texture, pattern etc).
-        Translate all string values into the given Language.`;
+        Translate all string values into the given Language.
+        IMPORTANT: Never output image base64 data or URLs in your text.`;
 
       const prompt = await getPrompt('analyze-image', defaultPrompt);
         
+      if (!imageBase64 || !imageBase64.includes(',')) {
+        throw new Error("Invalid image base64 data");
+      }
+
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: [
           { text: prompt },
           { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/webp" } }
@@ -111,7 +148,7 @@ async function startServer() {
         }
       });
       
-      res.json(JSON.parse(response.text));
+      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: error.message });
@@ -138,7 +175,7 @@ async function startServer() {
       const prompt = await getPrompt('evaluate-outfit', defaultPrompt);
         
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -154,7 +191,7 @@ async function startServer() {
         }
       });
       
-      res.json(JSON.parse(response.text));
+      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
       console.error(error);
       res.status(500).json({ error: error.message });
@@ -169,23 +206,26 @@ async function startServer() {
         Current location: ${city || 'unknown'}
         Weather context: ${weather || 'none'}
         Item details: Type: ${item.type}, Category: ${item.category}, Color: ${item.color}, Tags: ${(item.tags || []).join(', ')}.
-        Rate it on a scale of 1 to 5 based on versatility, style, and utility. Fractional numbers (e.g. 4.5) are allowed. Return only a JSON object with rating (number).`;
+        Rate it on a scale of 1 to 5 based on versatility, style, and utility. Fractional numbers (e.g. 4.5) are allowed. Return a JSON object with rating (number) and advice (string).`;
 
       const prompt = await getPrompt('evaluate-single-item', defaultPrompt);
         
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
-            properties: { rating: { type: Type.NUMBER } },
-            required: ["rating"]
+            properties: { 
+              rating: { type: Type.NUMBER },
+              advice: { type: Type.STRING }
+            },
+            required: ["rating", "advice"]
           }
         }
       });
-      res.json(JSON.parse(response.text));
+      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -208,7 +248,7 @@ async function startServer() {
       const prompt = await getPrompt('suggest-improvements', defaultPrompt);
         
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -233,7 +273,7 @@ async function startServer() {
           }
         }
       });
-      res.json(JSON.parse(response.text));
+      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -263,7 +303,7 @@ async function startServer() {
       const prompt = await getPrompt('generate-weekly-plan', defaultPrompt);
         
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -282,7 +322,7 @@ async function startServer() {
           }
         }
       });
-      res.json(JSON.parse(response.text));
+      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -302,7 +342,7 @@ async function startServer() {
       const systemPrompt = await getPrompt('chat-assistant', defaultSystemPrompt);
         
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-3.5-flash",
         contents: [
            { role: "user", parts: [{ text: systemPrompt }] },
            { role: "model", parts: [{ text: "Understood. I will act as a styling assistant and keep my answers concise, using the wardrobe data provided." }] },
@@ -317,6 +357,15 @@ async function startServer() {
       console.error("Chat error:", error);
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // Add a global error handler for JSON parsing issues
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (err instanceof SyntaxError && 'status' in err && err.status === 400 && 'body' in err) {
+      console.error('Body parser syntax error:', err.message);
+      return res.status(400).json({ error: 'Invalid JSON payload sent to server. The request might have been truncated. ' + err.message });
+    }
+    next(err);
   });
 
   // Vite middleware for development

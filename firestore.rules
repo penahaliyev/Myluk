@@ -56,17 +56,17 @@ service cloud.firestore {
 
     // WardrobeItem Entity Validation
     function isValidWardrobeItem(data) {
-      return data.keys().hasAll(['userId', 'imageUrl', 'createdAt', 'type'])
+      return data.keys().hasAll(['userId', 'imageUrl', 'type'])
           && data.userId == request.auth.uid
-          && data.imageUrl is string && data.imageUrl.size() <= 4194304
-          && data.type is string && (data.type == 'Item' || data.type == 'Look')
+          && data.imageUrl is string && data.imageUrl.size() <= 15000000
+          && data.type is string && (data.type == 'Item' || data.type == 'Look' || data.type == 'Duplicate')
           && (!('category' in data) || (data.category is string && data.category.size() <= 128))
           && (!('color' in data) || (data.color is string && data.color.size() <= 128))
-          && (!('source' in data) || (data.source is string && (data.source == 'my' || data.source == 'internet')))
+          && (!('source' in data) || (data.source is string && data.source.size() <= 20))
           && (!('tags' in data) || (data.tags is list && data.tags.size() <= 20))
           && (!('rating' in data) || (data.rating is number))
           && (!('advice' in data) || (data.advice is string && data.advice.size() <= 4096))
-          && data.createdAt is timestamp;
+          && (!('createdAt' in data) || data.createdAt is timestamp);
     }
 
     // Outfit Entity Validation
@@ -124,7 +124,7 @@ service cloud.firestore {
 
       match /wardrobeItems/{itemId} {
         allow get: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(itemId);
-        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId;
 
         allow create: if isVerified()
           && isValidId(userId)
@@ -142,7 +142,7 @@ service cloud.firestore {
           && existing().userId == request.auth.uid
           && isValidWardrobeItem(incoming())
           && incoming().userId == existing().userId
-          && incoming().createdAt == existing().createdAt
+          && (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt)
           && incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'type', 'category', 'color', 'source', 'tags', 'rating', 'advice']);
           
         allow delete: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(itemId) && existing().userId == request.auth.uid;
@@ -150,7 +150,7 @@ service cloud.firestore {
 
       match /outfits/{outfitId} {
         allow get: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(outfitId);
-        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId;
 
         allow create: if isVerified()
           && isValidId(userId)
@@ -177,7 +177,7 @@ service cloud.firestore {
       }
       match /shoppingItems/{itemId} {
         allow get: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(itemId);
-        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId;
 
         allow create: if isVerified()
           && isValidId(userId)

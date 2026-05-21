@@ -26,7 +26,7 @@ function getWeatherCondition(code: number) {
 }
 
 export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeatherData: (data: WeatherData) => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +42,7 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
       try {
         setLoading(true);
         // 1. Geocode City
-        const geoResp = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1`);
+        const geoResp = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=${i18n.language}`);
         const geoData = await geoResp.json();
         
         if (!geoData.results || geoData.results.length === 0) {
@@ -79,7 +79,7 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
         const data: WeatherData = {
           currentTemp,
           currentCondition,
-          city: name,
+          city: name || city,
           daily: dailyRecord
         };
 
@@ -100,6 +100,7 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
   if (error || !weather) return <div className="text-slate-500 text-xs">{error || t('weather_error')}</div>;
 
   const Icon = weather.currentCondition === 'Rainy' ? CloudRain : weather.currentCondition === 'Cloudy' ? Cloud : Sun;
+  const tCondition = t(weather.currentCondition.toLowerCase(), weather.currentCondition);
 
   return (
     <div className="flex items-center gap-6 bg-slate-800/50 backdrop-blur-md px-6 py-3 rounded-full border border-slate-700">
@@ -112,16 +113,16 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
         <Icon className={weather.currentCondition === 'Clear' ? 'text-yellow-400' : 'text-slate-400'} size={20} />
         <div className="flex flex-col">
           <span className="text-lg font-black text-white leading-none">{weather.currentTemp}°</span>
-          <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{weather.currentCondition}</span>
+          <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{tCondition}</span>
         </div>
       </div>
       <div className="h-4 w-px bg-slate-700" />
       <div className="text-right flex flex-col items-end">
-        <span className="text-xs font-bold text-slate-300 leading-none">
-          {new Date().toLocaleDateString(undefined, { weekday: 'long' })}
+        <span className="text-xs font-bold text-slate-300 leading-none capitalize">
+          {new Date().toLocaleDateString(i18n.language === 'en' ? 'en-US' : (i18n.language === 'ru' ? 'ru-RU' : 'az-AZ'), { weekday: 'long' })}
         </span>
         <span className="text-[10px] text-slate-500 uppercase tracking-widest">
-          {new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+          {new Date().toLocaleDateString(i18n.language === 'en' ? 'en-US' : (i18n.language === 'ru' ? 'ru-RU' : 'az-AZ'), { day: 'numeric', month: 'short' })}
         </span>
       </div>
     </div>

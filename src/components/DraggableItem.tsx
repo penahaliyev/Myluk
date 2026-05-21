@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDrag } from 'react-dnd';
 import { WardrobeItem, UserProfile } from '../lib/hooks';
 import { useTranslation } from 'react-i18next';
-import { doc, deleteDoc, updateDoc, collection, setDoc, serverTimestamp, getDocs, query } from 'firebase/firestore';
+import { doc, deleteDoc, updateDoc, collection, setDoc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Trash2, Sparkles, Wand2, Star, Crop, Wand, X, Info } from 'lucide-react';
 import { toast } from 'sonner';
@@ -18,6 +18,7 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
   const [showAdvice, setShowAdvice] = useState(false);
   const [editingImage, setEditingImage] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   const [{ isDragging }, dragRef] = useDrag({
     type: 'WARDROBE_ITEM',
@@ -27,38 +28,44 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
     }),
   });
 
-  const handleDelete = async (e: React.MouseEvent) => {
+  const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setShowDeleteConfirm(false);
     
-    if (confirm(t('confirm_delete', 'Are you sure you want to delete this item?'))) {
-      const toastId = toast.loading(t('deleting', 'Deleting...'));
-      try {
-        await deleteDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`));
-        
-        // Remove item from any outfits
-        const outfitsRef = collection(db, `users/${userId}/outfits`);
-        const snapshot = await getDocs(query(outfitsRef));
-        const updatePromises = snapshot.docs.map(async (docSnap) => {
-           const outfitData = docSnap.data();
-           if (outfitData.itemIds && outfitData.itemIds.includes(item.id)) {
-              const newItemIds = outfitData.itemIds.filter((id: string) => id !== item.id);
-              if (newItemIds.length === 0) {
-                 return deleteDoc(doc(db, `users/${userId}/outfits`, docSnap.id));
-              } else {
-                 return updateDoc(doc(db, `users/${userId}/outfits`, docSnap.id), {
-                    itemIds: newItemIds,
-                    updatedAt: serverTimestamp()
-                 });
-              }
-           }
-        });
-        await Promise.all(updatePromises);
-        
-        toast.success(t('status_READY', 'Item removed'), { id: toastId });
-      } catch (error: any) {
-        toast.error(error.message, { id: toastId });
-      }
+    const toastId = toast.loading(t('deleting', 'Deleting...'));
+    try {
+      await deleteDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`));
+      
+      // Remove item from any outfits
+      const outfitsRef = collection(db, `users/${userId}/outfits`);
+      const snapshot = await getDocs(query(outfitsRef, where('userId', '==', userId)));
+      const updatePromises = snapshot.docs.map(async (docSnap) => {
+         const outfitData = docSnap.data();
+         if (outfitData.itemIds && outfitData.itemIds.includes(item.id)) {
+            const newItemIds = outfitData.itemIds.filter((id: string) => id !== item.id);
+            if (newItemIds.length === 0) {
+               return deleteDoc(doc(db, `users/${userId}/outfits`, docSnap.id));
+            } else {
+               return updateDoc(doc(db, `users/${userId}/outfits`, docSnap.id), {
+                  itemIds: newItemIds,
+                  updatedAt: serverTimestamp()
+               });
+            }
+         }
+      });
+      await Promise.all(updatePromises);
+      
+      toast.success(t('status_READY', 'Item removed'), { id: toastId });
+    } catch (error: any) {
+      console.error("Delete failed at step:", error);
+      toast.error(error.message, { id: toastId });
     }
   };
 
@@ -73,12 +80,62 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
       const data = await resp.json();
       if (data.rating) {
         await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), {
-          rating: data.rating
+          rating: data.rating,
+          advice: data.advice || ""
         });
         toast.success(t('evaluated', 'Evaluated!'));
       }
     } catch (e: any) {
       toast.error(e.message);
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  const handleRetryAnalyze = async () => {
+    setEvaluating(true);
+    try {
+      const analyzeRes = await fetch('/api/analyze-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: item.imageUrl, language: i18n.language, existingLooks: [] })
+      });
+      const aiData = await analyzeRes.json();
+      
+      const isDuplicate = aiData.type === 'Duplicate';
+      const finalType = isDuplicate ? 'Duplicate' : (aiData.type === 'Look' ? 'Look' : 'Item');
+
+      await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), {
+        type: finalType,
+        category: aiData.category || "Other",
+        color: aiData.color || "Unknown",
+        tags: aiData.tags || [],
+        rating: aiData.rating || 0,
+        advice: aiData.advice || ""
+      });
+
+      if (aiData.type === 'Look' && aiData.extractedItems && Array.isArray(aiData.extractedItems)) {
+        const itemPromises = aiData.extractedItems.map(async (extractedItem: any) => {
+          const itemRef = doc(collection(db, `users/${userId}/wardrobeItems`));
+          return setDoc(itemRef, {
+            userId,
+            imageUrl: item.imageUrl,
+            type: "Item",
+            category: extractedItem.category || extractedItem.name || "Unknown",
+            color: extractedItem.color || "Unknown",
+            source: item.source,
+            tags: [extractedItem.attributes].filter(Boolean),
+            rating: 0,
+            advice: t('extracted_from_look', 'Extracted from Look'),
+            createdAt: serverTimestamp()
+          });
+        });
+        await Promise.all(itemPromises);
+      }
+      
+      toast.success(t('analyzed', 'AI assessment complete!'));
+    } catch (e: any) {
+      toast.error(t('analyze_failed', 'Failed to tag: ') + e.message);
     } finally {
       setEvaluating(false);
     }
@@ -174,7 +231,7 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
           <button 
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             className="p-2 bg-black/40 backdrop-blur-md text-white rounded-full hover:bg-red-500 transition-all cursor-pointer"
             title={t('confirm_delete')}
           >
@@ -194,6 +251,21 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
             <Crop className="w-4 h-4" />
           </button>
         </div>
+        
+        {showDeleteConfirm && (
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-4 text-center" onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }}>
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 w-full shadow-2xl" onClick={e => e.stopPropagation()}>
+              <Trash2 className="w-8 h-8 text-red-500 mx-auto mb-2" />
+              <p className="text-white font-bold text-xs mb-4 leading-tight">
+                 {t('confirm_delete', 'Are you sure you want to delete this item?')}
+              </p>
+              <div className="flex gap-2 w-full">
+                <button onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 transition-colors text-white rounded-xl text-[10px] font-black uppercase tracking-widest">{t('cancel', 'Отмена')}</button>
+                <button onClick={confirmDelete} className="flex-1 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 transition-colors text-red-400 rounded-xl text-[10px] font-black uppercase tracking-widest">{t('delete', 'Удалить')}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       
       {item.type === 'Duplicate' ? (
@@ -257,9 +329,21 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
                        </>
                     ) : (
                        <div className="text-center">
-                          <p className="text-slate-400 mb-4">Item has not been scored yet.</p>
-                          <button onClick={handleEvaluate} disabled={evaluating} className="px-8 py-3 bg-cyan-500 text-slate-900 font-bold uppercase tracking-widest text-sm rounded-full">
-                             {evaluating ? t('evaluating', 'Scoring...') : t('evaluate', 'Score Now')}
+                           <p className="text-slate-400 mb-4">
+                            {item.category === 'Processing...' 
+                               ? t('analyze_failed_msg', 'Image analysis failed previously.') 
+                               : t('no_score_yet', 'Item has not been scored yet.')}
+                          </p>
+                          <button 
+                            onClick={item.category === 'Processing...' ? handleRetryAnalyze : handleEvaluate} 
+                            disabled={evaluating} 
+                            className="px-8 py-3 bg-cyan-500 text-slate-900 font-bold uppercase tracking-widest text-sm rounded-full"
+                          >
+                             {evaluating 
+                                ? t('evaluating', 'Processing...') 
+                                : item.category === 'Processing...' 
+                                   ? t('retry_analysis', 'Retry AI Analysis') 
+                                   : t('evaluate', 'Score Now')}
                           </button>
                        </div>
                     )}
