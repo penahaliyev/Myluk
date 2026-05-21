@@ -1,0 +1,47 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+env:
+  PROJECT_ID: myluk-496908
+  REGION: us-west1
+  SERVICE: styledeck-282564706999
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Google Auth
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
+      - name: Setup Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker
+        run: |-
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE }}
+          region: ${{ env.REGION }}
+          source: ./
+          flags: '--port=3000 --allow-unauthenticated'
+
+      - name: Show Output
+        run: echo ${{ steps.deploy.outputs.url }}

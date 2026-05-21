@@ -1,0 +1,80 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with language and style preferences",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "language": { "type": "string", "enum": ["ru", "az"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "language", "createdAt", "updatedAt"]
+    },
+    "WardrobeItem": {
+      "title": "WardrobeItem",
+      "description": "A piece of clothing in the user's wardrobe",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "color": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "imageUrl", "createdAt"]
+    },
+    "Outfit": {
+      "title": "Outfit",
+      "description": "An outfit planned for a specific day or saved in archive",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "dayOfWeek": { "type": "string" },
+        "itemIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "description": { "type": "string" },
+        "aiEvaluation": { "type": "string" },
+        "status": { "type": "string", "enum": ["READY", "NEEDS_IMPROVEMENT", "MISSING_ITEM", "NOT_RECOMMENDED", "AI_CHOICE"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "itemIds", "createdAt", "updatedAt"]
+    },
+    "Prompt": {
+      "title": "Prompt",
+      "description": "AI prompt template",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "trigger": { "type": "string" },
+        "text": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "description", "trigger", "text", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles"
+    },
+    "users/{userId}/wardrobeItems/{itemId}": {
+      "schema": { "$ref": "#/entities/WardrobeItem" },
+      "description": "Wardrobe items belonging to a user"
+    },
+    "users/{userId}/outfits/{outfitId}": {
+      "schema": { "$ref": "#/entities/Outfit" },
+      "description": "Outfits planned by a user"
+    },
+    "prompts/{promptId}": {
+      "schema": { "$ref": "#/entities/Prompt" },
+      "description": "Global AI prompts"
+    }
+  }
+}

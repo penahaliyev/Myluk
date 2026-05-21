@@ -1,0 +1,140 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+    
+    // UserProfile Entity Validation
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['userId', 'language', 'createdAt', 'updatedAt']) 
+          && data.userId == request.auth.uid 
+          && data.language is string && data.language.size() <= 2 && (data.language == 'ru' || data.language == 'az')
+          && data.createdAt is timestamp 
+          && data.updatedAt is timestamp;
+    }
+
+    // WardrobeItem Entity Validation
+    function isValidWardrobeItem(data) {
+      return data.keys().hasAll(['userId', 'imageUrl', 'createdAt'])
+          && data.userId == request.auth.uid
+          && data.imageUrl is string && data.imageUrl.size() <= 2048
+          && data.category is string && data.category.size() <= 128
+          && data.color is string && data.color.size() <= 128
+          && data.createdAt is timestamp;
+    }
+
+    // Outfit Entity Validation
+    function isValidOutfit(data) {
+      return data.keys().hasAll(['userId', 'itemIds', 'createdAt', 'updatedAt'])
+          && data.userId == request.auth.uid
+          && (!('dayOfWeek' in data) || (data.dayOfWeek is string && data.dayOfWeek.size() <= 128))
+          && data.itemIds is list && data.itemIds.size() <= 15 && (data.itemIds.size() == 0 || data.itemIds[0] is string)
+          && (!('description' in data) || (data.description is string && data.description.size() <= 2048))
+          && (!('aiEvaluation' in data) || (data.aiEvaluation is string && data.aiEvaluation.size() <= 2048))
+          && (!('status' in data) || (data.status is string && (data.status == 'READY' || data.status == 'NEEDS_IMPROVEMENT' || data.status == 'MISSING_ITEM' || data.status == 'NOT_RECOMMENDED' || data.status == 'AI_CHOICE')))
+          && data.createdAt is timestamp
+          && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isVerified() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isVerified() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && incoming().keys().size() == 4;
+
+      allow update: if isVerified()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && existing().userId == request.auth.uid
+        && isValidUserProfile(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['language', 'updatedAt']);
+      
+      allow delete: if false;
+
+      match /wardrobeItems/{itemId} {
+        allow get: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(itemId);
+        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerified()
+          && isValidId(userId)
+          && isValidId(itemId)
+          && request.auth.uid == userId
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidWardrobeItem(incoming())
+          && incoming().createdAt == request.time
+          && incoming().keys().size() == 5; // userId, imageUrl, createdAt, category, color
+          
+        allow update: if isVerified()
+          && isValidId(userId)
+          && isValidId(itemId)
+          && request.auth.uid == userId
+          && existing().userId == request.auth.uid
+          && isValidWardrobeItem(incoming())
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().diff(existing()).affectedKeys().hasOnly(['imageUrl', 'category', 'color']);
+          
+        allow delete: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(itemId) && existing().userId == request.auth.uid;
+      }
+
+      match /outfits/{outfitId} {
+        allow get: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(outfitId);
+        allow list: if isVerified() && isValidId(userId) && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerified()
+          && isValidId(userId)
+          && isValidId(outfitId)
+          && request.auth.uid == userId
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && isValidOutfit(incoming())
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && incoming().keys().size() >= 4; // minimum required: userId, itemIds, createdAt, updatedAt
+          
+        allow update: if isVerified()
+          && isValidId(userId)
+          && isValidId(outfitId)
+          && request.auth.uid == userId
+          && existing().userId == request.auth.uid
+          && isValidOutfit(incoming())
+          && incoming().userId == existing().userId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['dayOfWeek', 'itemIds', 'description', 'aiEvaluation', 'status', 'updatedAt']);
+          
+        allow delete: if isVerified() && isValidId(userId) && request.auth.uid == userId && isValidId(outfitId) && existing().userId == request.auth.uid;
+      }
+    }
+  }
+}
