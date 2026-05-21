@@ -381,6 +381,9 @@ async function startServer() { // force sync
     // Provide a wildcard fallback so client-side routing works
     // Assuming express v4 as per package.json
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
