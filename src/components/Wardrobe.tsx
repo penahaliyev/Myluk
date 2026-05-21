@@ -550,7 +550,7 @@ export function Wardrobe({
               : "border-slate-700 bg-slate-800/20 hover:border-slate-500 hover:bg-slate-800/40"
           } ${uploading ? "opacity-50 pointer-events-none" : ""}`}
         >
-          <input {...getInputProps({ multiple: true })} />
+          <input {...getInputProps()} />
           <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center mb-4 border border-slate-700 group-hover:scale-110 transition-transform">
             <UploadCloud className="text-cyan-400" size={24} />
           </div>
