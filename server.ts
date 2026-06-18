@@ -83,7 +83,7 @@ async function startServer() { // force sync
   // API Routes
   app.post("/api/analyze-image", async (req, res) => {
     try {
-      const { imageBase64, language, existingLooks } = req.body;
+      const { imageBase64, language, existingLooks, existingItems } = req.body;
       
       const defaultPrompt = `Analyze this image which contains either a single clothing item or a full outfit/look. 
         Language: ${language === 'ru' ? 'Russian' : 'Azerbaijani'}
@@ -92,14 +92,16 @@ async function startServer() { // force sync
         If it's a Look, provide its overall style as category (e.g. 'Casual', 'Business', 'Streetwear'), its main color palette as color, and extract up to 5 clothing items clearly visible in the look. Use the extracted items to count what is worn.
         FOR 'Look' ONLY:
         - We provide a list of existing looks the user has: ${existingLooks ? JSON.stringify(existingLooks) : '[]'}.
-        - CHECK carefully: if the clothing layout, posture, and items worn in this new image tightly match the text tags of one of the existing looks, return type as 'Duplicate'. Let minor variations slide, we only want exact duplicates.
+        - CHECK carefully: if the clothing layout, posture, and items worn in this new image tightly match the text tags of one of the existing looks, return type as 'Duplicate' and set 'duplicateOfId' to the id of the matched look. Let minor variations slide, we only want exact duplicates.
         - If it is a 'Duplicate', set the 'advice' string to tell the user to delete this copy ("This is a duplicate of a previously uploaded look. Delete it."). Do not provide a rating. 
         FOR BOTH 'Item' and 'Look' (if not Duplicate):
         - Automatically rate it from 1.0 to 5.0 (fractional allowed). For a Look, rate the overall appearance. For an Item, rate its versatility, style, and condition.
         - Provide an "advice" string. Explain how these clothes fit together (or what this item combines well with), what does NOT combine with it, and why this rating is given. Mention the number of items and what they are. Keep it concise.
         FOR 'Look' ONLY (if not Duplicate):
-        - Provide an array 'extractedItems'. Each object should have 'name', 'category', 'color', and 'attributes' (brief description of texture, pattern etc).
-        Translate all string values into the given Language.
+        - Provide an array 'extractedItems'. Each object should have 'name', 'category', 'color', 'attributes' (brief description of texture, pattern etc) and 'boundingBox', an array of 4 numbers [ymin, xmin, ymax, xmax] representing relative normalized coordinates (0.0 to 1.0) of the item in the image.
+        - We provide a list of existing isolated clothing items the user has: ${existingItems ? JSON.stringify(existingItems) : '[]'}.
+        - For each extracted item, check if it is highly likely to be the EXACT SAME physical item as one from the existingItems list (matching by visual similarity or category/color). If yes, include its 'id' as 'matchedExistingItemId'. If it's a new item, leave 'matchedExistingItemId' empty or omit it.
+        Translate all string values into the given Language. (Except IDs)
         IMPORTANT: Never output image base64 data or URLs in your text.`;
 
       const prompt = await getPrompt('analyze-image', defaultPrompt);
@@ -108,50 +110,33 @@ async function startServer() { // force sync
         throw new Error("Invalid image base64 data");
       }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: [
-          { text: prompt },
-          { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/webp" } }
-        ],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              type: { type: Type.STRING, enum: ["Item", "Look", "Duplicate"] },
-              category: { type: Type.STRING },
-              color: { type: Type.STRING },
-              tags: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "List of clothing items visible in the image if it is a Look"
-              },
-              rating: { type: Type.NUMBER, description: "Rating from 1.0 to 5.0" },
-              advice: { type: Type.STRING, description: "Explanation of combinations and why this rating is given" },
-              extractedItems: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    category: { type: Type.STRING },
-                    color: { type: Type.STRING },
-                    attributes: { type: Type.STRING }
-                  }
-                },
-                description: "Detailed extracted items for Look"
-              }
-            },
-            required: ["type", "category", "color", "tags", "advice"]
-          }
-        }
-      });
+      // const response = await ai.models.generateContent({
+      //   model: "gemini-3.5-flash",
+      //   contents: [
+      //     { text: prompt },
+      //     { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/webp" } }
+      //   ],
+      //   config: { ... }
+      // });
+      // res.json(parseGeminiResponse(response.text));
       
-      res.json(parseGeminiResponse(response.text));
+      // Disabled AI to save costs
+      res.json({
+        type: "Item",
+        category: "Manually Added",
+        color: "Unknown",
+        tags: [],
+        rating: 0,
+        advice: "AI analysis is disabled. You can edit or categorize manually.",
+        extractedItems: []
+      });
     } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: error.message });
+      if (error.message && error.message.includes('429')) {
+         res.status(429).json({ error: "API rate limit or spending cap exceeded. Please check your billing in Google AI Studio." });
+      } else {
+         res.status(500).json({ error: error.message });
+      }
     }
   });
 
@@ -174,27 +159,21 @@ async function startServer() { // force sync
 
       const prompt = await getPrompt('evaluate-outfit', defaultPrompt);
         
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              evaluation: { type: Type.STRING, description: "Detailed evaluation message in the user's language" },
-              status: { type: Type.STRING, description: "Enum string", enum: ["READY", "NEEDS_IMPROVEMENT", "NOT_RECOMMENDED", "MISSING_ITEM"] },
-              recommendationToBuy: { type: Type.STRING, description: "Description of a generic item to buy that goes well with this, in the user's language" }
-            },
-            required: ["evaluation", "status"]
-          }
-        }
-      });
+      // const response = await ai.models.generateContent({ ... });
+      // res.json(parseGeminiResponse(response.text));
       
-      res.json(parseGeminiResponse(response.text));
+      res.json({
+        evaluation: "AI evaluation is disabled.",
+        status: "READY",
+        recommendationToBuy: ""
+      });
     } catch (error: any) {
       console.error(error);
-      res.status(500).json({ error: error.message });
+      if (error.message && error.message.includes('429')) {
+         res.status(429).json({ error: "API rate limit or spending cap exceeded. Please check your billing in Google AI Studio." });
+      } else {
+         res.status(500).json({ error: error.message });
+      }
     }
   });
 
@@ -210,24 +189,19 @@ async function startServer() { // force sync
 
       const prompt = await getPrompt('evaluate-single-item', defaultPrompt);
         
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: { 
-              rating: { type: Type.NUMBER },
-              advice: { type: Type.STRING }
-            },
-            required: ["rating", "advice"]
-          }
-        }
+      // const response = await ai.models.generateContent({ ... });
+      // res.json(parseGeminiResponse(response.text));
+      
+      res.json({
+        rating: 0,
+        advice: "AI evaluation is disabled."
       });
-      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      if (error.message && error.message.includes('429')) {
+         res.status(429).json({ error: "API rate limit or spending cap exceeded. Please check your billing in Google AI Studio." });
+      } else {
+         res.status(500).json({ error: error.message });
+      }
     }
   });
 
@@ -247,35 +221,19 @@ async function startServer() { // force sync
 
       const prompt = await getPrompt('suggest-improvements', defaultPrompt);
         
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              advice: { type: Type.STRING, description: "Detailed advice message" },
-              itemsToBuy: {
-                type: Type.ARRAY,
-                description: "List of items to buy (only populated if item is from the internet)",
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    name: { type: Type.STRING },
-                    reason: { type: Type.STRING }
-                  },
-                  required: ["name", "reason"]
-                }
-              }
-            },
-            required: ["advice"]
-          }
-        }
+      // const response = await ai.models.generateContent({ ... });
+      // res.json(parseGeminiResponse(response.text));
+      
+      res.json({
+        advice: "AI suggestions are disabled.",
+        itemsToBuy: []
       });
-      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      if (error.message && error.message.includes('429')) {
+         res.status(429).json({ error: "API rate limit or spending cap exceeded. Please check your billing in Google AI Studio." });
+      } else {
+         res.status(500).json({ error: error.message });
+      }
     }
   });
 
@@ -302,29 +260,24 @@ async function startServer() { // force sync
 
       const prompt = await getPrompt('generate-weekly-plan', defaultPrompt);
         
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              monday: { type: Type.ARRAY, items: { type: Type.STRING } },
-              tuesday: { type: Type.ARRAY, items: { type: Type.STRING } },
-              wednesday: { type: Type.ARRAY, items: { type: Type.STRING } },
-              thursday: { type: Type.ARRAY, items: { type: Type.STRING } },
-              friday: { type: Type.ARRAY, items: { type: Type.STRING } },
-              saturday: { type: Type.ARRAY, items: { type: Type.STRING } },
-              sunday: { type: Type.ARRAY, items: { type: Type.STRING } },
-            },
-            required: days
-          }
-        }
+      // const response = await ai.models.generateContent({ ... });
+      // res.json(parseGeminiResponse(response.text));
+      
+      res.json({
+        monday: [],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
+        sunday: []
       });
-      res.json(parseGeminiResponse(response.text));
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      if (error.message && error.message.includes('429')) {
+         res.status(429).json({ error: "API rate limit or spending cap exceeded. Please check your billing in Google AI Studio." });
+      } else {
+         res.status(500).json({ error: error.message });
+      }
     }
   });
 
@@ -335,27 +288,24 @@ async function startServer() { // force sync
         Language to use: ${language === 'ru' ? 'Russian' : 'Azerbaijani'}.
         User profile (height/weight): ${profile?.height ? profile.height+'cm' : 'unknown'}, ${profile?.weight ? profile.weight+'kg' : 'unknown'}.
         User's Wardrobe (JSON):
-        ${JSON.stringify(wardrobeItems.map((i: any) => ({ category: i.category, color: i.color, type: i.type, source: i.source, rating: i.rating, tags: i.tags })))}
+        ${JSON.stringify(wardrobeItems.map((i: any) => ({ displayId: i.displayId || 'N/A', category: i.category, color: i.color, type: i.type, source: i.source, rating: i.rating, tags: i.tags })))}
         
+        Important: Every wardrobe item/look has a unique 4-digit ID (displayId, e.g., "0001", "0002"). You MUST refer to items by their displayId (for example "#0005") when suggesting combinations, discussing styles, or answering questions so the user knows exactly which photo/outfit you are talking about.
         Answer the user's fashion & styling questions using their wardrobe items as context.`;
 
       const systemPrompt = await getPrompt('chat-assistant', defaultSystemPrompt);
         
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: [
-           { role: "user", parts: [{ text: systemPrompt }] },
-           { role: "model", parts: [{ text: "Understood. I will act as a styling assistant and keep my answers concise, using the wardrobe data provided." }] },
-           ...messages.map((m: any) => ({
-             role: m.role === 'user' ? 'user' : 'model',
-             parts: [{ text: m.content }]
-           }))
-        ],
-      });
-      res.json({ text: response.text });
+      // const response = await ai.models.generateContent({ ... });
+      // res.json({ text: response.text });
+      
+      res.json({ text: "AI chat is currently disabled to save costs. You can continue managing your wardrobe manually." });
     } catch (error: any) {
       console.error("Chat error:", error);
-      res.status(500).json({ error: error.message });
+      if (error.message && error.message.includes('429')) {
+         res.status(429).json({ error: "API rate limit or spending cap exceeded. Please check your billing in Google AI Studio." });
+      } else {
+         res.status(500).json({ error: error.message });
+      }
     }
   });
 
