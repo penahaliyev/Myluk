@@ -1,0 +1,24 @@
+FROM node:20-alpine
+
+# Set the working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
+
+# Copy the rest of the application code
+COPY . .
+
+# Build the application (compiles Vite + Express server)
+RUN npm run build
+
+# Set production environment so the server serves static files
+ENV NODE_ENV=production
+
+# Expose the standard Cloud Run port
+EXPOSE 3000
+# Added comment to trigger git track
+CMD ["npm", "start"]
