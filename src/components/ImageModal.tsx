@@ -11,12 +11,12 @@ export function ImageModal({ imageUrl, onClose }: ImageModalProps) {
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 cursor-zoom-out"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-[#eef2e6]/95 backdrop-blur-xl p-4 cursor-zoom-out"
       onClick={onClose}
     >
       <div className="absolute top-6 right-6 flex items-center gap-3 z-[101]">
          <button 
-           className="p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors hidden md:flex items-center gap-2 text-xs font-bold uppercase tracking-widest px-5 group"
+           className="p-3 text-[#2b3327]/70 hover:text-[#2b3327] bg-[#2b3327]/10 hover:bg-[#2b3327]/20 rounded-full transition-colors hidden md:flex items-center gap-2 text-xs font-bold uppercase tracking-widest px-5 group"
            onClick={(e) => {
              e.stopPropagation();
              setIsZoomed(!isZoomed);
@@ -27,7 +27,7 @@ export function ImageModal({ imageUrl, onClose }: ImageModalProps) {
          </button>
          <button 
            onClick={onClose} 
-           className="p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+           className="p-3 text-[#2b3327]/70 hover:text-[#2b3327] bg-[#2b3327]/10 hover:bg-[#2b3327]/20 rounded-full transition-colors"
          >
            <X size={24} />
          </button>
@@ -46,7 +46,7 @@ export function ImageModal({ imageUrl, onClose }: ImageModalProps) {
       </div>
       
       {!isZoomed && (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/40 text-[10px] font-bold uppercase tracking-[0.3em] pointer-events-none">
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 text-[#2b3327]/40 text-[10px] font-bold uppercase tracking-[0.3em] pointer-events-none">
           Click image to toggle 2.5x Zoom
         </div>
       )}

@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { WardrobeItem } from "../lib/hooks";
+import { WardrobeItem, Outfit } from "../lib/hooks";
 import { useTranslation } from "react-i18next";
 import { DraggableItem } from "./DraggableItem";
 import {
@@ -18,8 +18,11 @@ import {
   updateDoc,
   collection,
   serverTimestamp,
+  arrayUnion,
+  deleteDoc,
 } from "firebase/firestore";
 import { toast } from "sonner";
+import { fetchApi } from "../lib/utils";
 import { CropEditor } from "./CropEditor";
 
 const getResizedBase64 = (dataUrl: string, maxDim = 800): Promise<string> => {
@@ -48,11 +51,47 @@ const getResizedBase64 = (dataUrl: string, maxDim = 800): Promise<string> => {
   });
 };
 
+const cropImage = async (base64: string, boundingBox: number[]): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx || !boundingBox || boundingBox.length !== 4) return resolve(base64);
+
+      let [ymin, xmin, ymax, xmax] = boundingBox;
+      ymin = Math.max(0, Math.min(1, ymin));
+      xmin = Math.max(0, Math.min(1, xmin));
+      ymax = Math.max(0, Math.min(1, ymax));
+      xmax = Math.max(0, Math.min(1, xmax));
+      
+      if (ymin >= ymax || xmin >= xmax) {
+        return resolve(base64);
+      }
+
+      const x = Math.max(0, xmin * img.width);
+      const y = Math.max(0, ymin * img.height);
+      const w = Math.min(img.width, (xmax - xmin) * img.width);
+      const h = Math.min(img.height, (ymax - ymin) * img.height);
+
+      canvas.width = w;
+      canvas.height = h;
+      
+      ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/webp', 0.9));
+    };
+    img.onerror = () => resolve(base64);
+    img.src = base64;
+  });
+};
+
 export function Wardrobe({
   items,
+  outfits,
   userId,
 }: {
   items: WardrobeItem[];
+  outfits: Outfit[];
   userId: string;
 }) {
   const { t, i18n } = useTranslation();
@@ -91,124 +130,28 @@ export function Wardrobe({
   const currentImageSrc = imageSrcQueue[0] || null;
 
   const handleUploadCropped = async (croppedImageBase64: string) => {
-    setImageSrcQueue((prev) => prev.slice(1)); // Proceed to next image internally
+    setImageSrcQueue((prev) => prev.slice(1));
 
     const compressedBase64 = await getResizedBase64(croppedImageBase64, 800);
     const newRef = doc(collection(db, `users/${userId}/wardrobeItems`));
 
     try {
       // Optimistic instant save
+      const initialType = activeTab === "my_looks" ? "Look" : "Item";
       await setDoc(newRef, {
         userId,
         imageUrl: compressedBase64,
-        type: "Item", // Required to be "Item" or "Look" by firestore rules
-        category: "Processing...",
+        type: initialType,
+        category: "Not Analyzed",
         color: "Unknown",
         source: activeTab,
         tags: [],
         createdAt: serverTimestamp(),
       });
+      toast.success(t("uploaded", "Image uploaded successfully"));
     } catch (e) {
       console.error("setDoc Error:", e);
       throw e;
-    }
-
-    const toastId = toast.loading(
-      t("analyzing", "AI is assessing your look..."),
-    );
-
-    // Asynchronously replace with AI suggestions
-    try {
-      const existingLooks = items
-        .filter((i) => i.type === "Look")
-        .map((i) => ({
-          id: i.id,
-          category: i.category,
-          color: i.color,
-          tags: i.tags,
-        }));
-
-      const analyzeRes = await fetch("/api/analyze-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageBase64: compressedBase64,
-          language: i18n.language,
-          existingLooks,
-        }),
-      });
-      const aiData = await analyzeRes.json();
-
-      const isDuplicate = aiData.type === "Duplicate";
-      const finalType = isDuplicate
-        ? "Duplicate"
-        : aiData.type === "Look"
-          ? "Look"
-          : "Item";
-
-      try {
-        await updateDoc(newRef, {
-          type: finalType,
-          category: String(aiData.category || "Other").substring(0, 120),
-          color: String(aiData.color || "Unknown").substring(0, 120),
-          tags: Array.isArray(aiData.tags)
-            ? aiData.tags.map((t) => String(t).substring(0, 50)).slice(0, 20)
-            : [],
-          rating:
-            typeof aiData.rating === "number"
-              ? aiData.rating
-              : parseFloat(aiData.rating) || 0,
-          advice: String(aiData.advice || "").substring(0, 4000),
-        });
-      } catch (e) {
-        console.error("updateDoc Error:", e);
-        throw e;
-      }
-
-      if (
-        aiData.type === "Look" &&
-        aiData.extractedItems &&
-        Array.isArray(aiData.extractedItems)
-      ) {
-        const itemPromises = aiData.extractedItems.map(
-          async (extractedItem: any) => {
-            const itemRef = doc(
-              collection(db, `users/${userId}/wardrobeItems`),
-            );
-            try {
-              return await setDoc(itemRef, {
-                userId,
-                imageUrl: compressedBase64, // using original image
-                type: "Item",
-                category: String(
-                  extractedItem.category || extractedItem.name || "Unknown",
-                ).substring(0, 120),
-                color: String(extractedItem.color || "Unknown").substring(
-                  0,
-                  120,
-                ),
-                source: activeTab,
-                tags: [
-                  String(extractedItem.attributes || "").substring(0, 50),
-                ].filter(Boolean),
-                rating: 0, // No rating yet for extracted items
-                advice: t("extracted_from_look", "Extracted from Look"),
-                createdAt: serverTimestamp(),
-              });
-            } catch (e) {
-              console.error("extracted image setDoc Error:", e);
-              throw e;
-            }
-          },
-        );
-        await Promise.all(itemPromises);
-      }
-
-      toast.success(t("analyzed", "AI assessment complete!"), { id: toastId });
-    } catch (e: any) {
-      toast.error(t("analyze_failed", "Failed to tag: ") + e.message, {
-        id: toastId,
-      });
     }
   };
 
@@ -217,39 +160,64 @@ export function Wardrobe({
     accept: { "image/*": [] },
     multiple: true,
     maxFiles: 10,
+    maxSize: 10 * 1024 * 1024, // 10MB
   } as any);
 
   const filteredItems = items.filter((item) => {
     if (activeTab === "my_looks")
       return (
         item.source !== "internet" &&
-        (item.type === "Look" ||
-          item.category === "Processing..." ||
-          item.rating === 0 ||
-          !item.type)
+        item.type === "Look"
       );
     if (activeTab === "my_items")
       return (
         item.source !== "internet" &&
-        item.type === "Item" &&
-        item.category !== "Processing..." &&
-        item.rating !== 0
+        item.type === "Item"
       );
     return item.source === "internet";
   });
 
+  // --- Cleanup Orphaned Items ---
+  useEffect(() => {
+    if (!userId || items.length === 0) return;
+
+    const cleanupOrphanedItems = async () => {
+      const allLookIds = new Set(items.filter(i => i.type === "Look").map(i => i.id));
+      const orphanedItems = items.filter(i => {
+        if (i.type === "Item" && Array.isArray(i.usedInLooks) && i.usedInLooks.length > 0) {
+          // If all looks that use this item are gone, it's orphaned
+          return i.usedInLooks.every(lookId => !allLookIds.has(lookId));
+        }
+        return false;
+      });
+
+      if (orphanedItems.length > 0) {
+        console.log(`Found ${orphanedItems.length} orphaned items. Cleaning them up...`);
+        for (const orphan of orphanedItems) {
+           try {
+             await deleteDoc(doc(db, `users/${userId}/wardrobeItems/${orphan.id}`));
+             console.log(`Cleaned up orphaned item ${orphan.id}`);
+           } catch (e) {
+             console.error("Failed to delete orphaned item", orphan.id, e);
+           }
+        }
+      }
+    };
+
+    cleanupOrphanedItems();
+  }, [items, userId, db]);
+  // ------------------------------
+
   const handleReanalyzeMissed = async () => {
-    const missed = items.filter(
-      (i) => !i.rating || i.rating === 0 || i.category === "Processing...",
-    );
-    if (missed.length === 0) {
-      toast.info("No missed items to re-analyze.");
+    const toAnalyze = items.filter(i => i.category === 'Processing...' || i.category === 'Not Analyzed');
+    if (toAnalyze.length === 0) {
+      toast.info("No items to analyze.");
       return;
     }
 
     abortRef.current = false;
     setReanalyzeStatus({
-      total: missed.length,
+      total: toAnalyze.length,
       current: 0,
       currentItemId: "",
       logs: ["Starting database re-evaluation..."],
@@ -266,11 +234,20 @@ export function Wardrobe({
         tags: i.tags,
       }));
 
+    const existingItemsForAI = items
+      .filter((i) => i.type === "Item")
+      .map((i) => ({
+        id: i.id,
+        category: i.category,
+        color: i.color,
+        tags: i.tags,
+      }));
+
     // Process in batches of 3 to speed up, while avoiding simple rate limits
     let completedCount = 0;
     const batchSize = 1;
 
-    for (let i = 0; i < missed.length; i += batchSize) {
+    for (let i = 0; i < toAnalyze.length; i += batchSize) {
       if (abortRef.current) {
         setReanalyzeStatus((prev) =>
           prev
@@ -283,7 +260,7 @@ export function Wardrobe({
         break;
       }
 
-      const batch = missed.slice(i, i + batchSize);
+      const batch = toAnalyze.slice(i, i + batchSize);
 
       setReanalyzeStatus((prev) =>
         prev
@@ -302,36 +279,92 @@ export function Wardrobe({
         if (abortRef.current) return;
         try {
           const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 90000); // 90 seconds timeout
+          const timeoutId = setTimeout(() => controller.abort(), 180000); // 180 seconds timeout
 
-          const analyzeRes = await fetch("/api/analyze-image", {
+          const aiData = await fetchApi("/api/analyze-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               imageBase64: item.imageUrl,
               language: i18n.language,
-              existingLooks,
+              existingLooks: existingLooks.filter(l => l.id !== item.id),
+              existingItems: existingItemsForAI.filter(i => i.id !== item.id),
             }),
             signal: controller.signal
           });
           clearTimeout(timeoutId);
 
           if (abortRef.current) return;
-
-          if (!analyzeRes.ok) {
-            const errText = await analyzeRes.text();
-            throw new Error(errText);
-          }
-
-          const aiData = await analyzeRes.json();
           const finalType =
             aiData.type === "Duplicate"
               ? "Duplicate"
               : aiData.type === "Look"
                 ? "Look"
                 : "Item";
+                
+          const newlyExtractedItemIds: string[] = [];
 
-          await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), {
+          if (
+            aiData.type === "Look" &&
+            aiData.extractedItems &&
+            Array.isArray(aiData.extractedItems)
+          ) {
+            const itemPromises = aiData.extractedItems.map(
+              async (extractedItem: any) => {
+                if (extractedItem.matchedExistingItemId) {
+                  const matchedId = extractedItem.matchedExistingItemId;
+                  newlyExtractedItemIds.push(matchedId);
+                  try {
+                    const itemRef = doc(db, `users/${userId}/wardrobeItems`, matchedId);
+                    await updateDoc(itemRef, {
+                      usedInLooks: arrayUnion(item.id)
+                    });
+                  } catch (e) {
+                    console.error("error updating matched item", e);
+                  }
+                  return;
+                }
+                
+                const itemRef = doc(
+                  collection(db, `users/${userId}/wardrobeItems`),
+                );
+                newlyExtractedItemIds.push(itemRef.id);
+                try {
+                  let finalImageUrl = item.imageUrl;
+                  if (extractedItem.boundingBox && Array.isArray(extractedItem.boundingBox)) {
+                    finalImageUrl = await cropImage(item.imageUrl, extractedItem.boundingBox);
+                  }
+    
+                  return await setDoc(itemRef, {
+                    userId,
+                    imageUrl: finalImageUrl,
+                    type: "Item",
+                    category: String(
+                      extractedItem.category || extractedItem.name || "Unknown",
+                    ).substring(0, 120),
+                    color: String(extractedItem.color || "Unknown").substring(
+                      0,
+                      120,
+                    ),
+                    source: "my",
+                    tags: [
+                      String(extractedItem.attributes || "").substring(0, 50),
+                    ].filter(Boolean),
+                    rating: 0,
+                    advice: t("extracted_from_look", "Extracted from Look"),
+                    createdAt: serverTimestamp(),
+                    usedInLooks: [item.id]
+                  });
+                } catch (e) {
+                  console.error("extracted image setDoc Error:", e);
+                  throw e;
+                }
+              },
+            );
+            await Promise.all(itemPromises);
+          }
+
+          const docUpdates: any = {
             type: finalType,
             category: String(aiData.category || "Other").substring(0, 120),
             color: String(aiData.color || "Unknown").substring(0, 120),
@@ -343,7 +376,15 @@ export function Wardrobe({
                 ? aiData.rating
                 : parseFloat(aiData.rating) || 0,
             advice: String(aiData.advice || "").substring(0, 4000),
-          });
+          };
+          if (finalType === "Look" && newlyExtractedItemIds.length > 0) {
+            docUpdates.itemsIds = newlyExtractedItemIds;
+          }
+          if (finalType === "Duplicate" && aiData.duplicateOfId) {
+            docUpdates.duplicateOfId = aiData.duplicateOfId;
+          }
+
+          await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), docUpdates);
 
           if (abortRef.current) return;
 
@@ -392,7 +433,7 @@ export function Wardrobe({
               ...prev.logs,
               abortRef.current
                 ? `Process aborted. Completed ${successCount} items.`
-                : `Done. Processed ${successCount}/${missed.length} successfully.`,
+                : `Done. Processed ${successCount}/${toAnalyze.length} successfully.`,
             ],
           }
         : null,
@@ -401,20 +442,20 @@ export function Wardrobe({
     toast.success(
       abortRef.current
         ? `Analysis aborted.`
-        : `Analysis complete. Processed ${successCount}/${missed.length}`,
+        : `Analysis complete. Processed ${successCount}/${toAnalyze.length}`,
     );
   };
 
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-        <div className="flex bg-slate-800 p-1.5 rounded-full overflow-x-auto border border-slate-700 max-w-full no-scrollbar">
+        <div className="flex bg-white p-1.5 rounded-full overflow-x-auto border border-[#d2d9c8] max-w-full no-scrollbar">
           <button
             onClick={() => setActiveTab("my_looks")}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
               activeTab === "my_looks"
-                ? "bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20"
-                : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                ? "bg-[#6b8555] text-white shadow-lg shadow-[#6b8555]/20"
+                : "text-[#6b7863] hover:text-[#2b3327] hover:bg-[#d2d9c8]/50"
             }`}
           >
             <ImageIcon size={16} />
@@ -424,8 +465,8 @@ export function Wardrobe({
             onClick={() => setActiveTab("my_items")}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
               activeTab === "my_items"
-                ? "bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20"
-                : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                ? "bg-[#6b8555] text-white shadow-lg shadow-[#6b8555]/20"
+                : "text-[#6b7863] hover:text-[#2b3327] hover:bg-[#d2d9c8]/50"
             }`}
           >
             <ImageIcon size={16} />
@@ -435,8 +476,8 @@ export function Wardrobe({
             onClick={() => setActiveTab("internet")}
             className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
               activeTab === "internet"
-                ? "bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20"
-                : "text-slate-400 hover:text-white hover:bg-slate-700/50"
+                ? "bg-[#6b8555] text-white shadow-lg shadow-[#6b8555]/20"
+                : "text-[#6b7863] hover:text-[#2b3327] hover:bg-[#d2d9c8]/50"
             }`}
           >
             <DownloadCloud size={16} />
@@ -446,7 +487,7 @@ export function Wardrobe({
         <button
           onClick={handleReanalyzeMissed}
           disabled={!!reanalyzeStatus}
-          className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 text-cyan-400 hover:text-cyan-300 border border-slate-700 hover:border-cyan-500/50 rounded-full text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+          className="flex items-center gap-2 px-6 py-2.5 bg-white text-[#556943] hover:text-[#455438] border border-[#d2d9c8] hover:border-[#6b8555]/50 rounded-full text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50"
         >
           {!!reanalyzeStatus
             ? t("evaluating", "Оценка...")
@@ -455,30 +496,30 @@ export function Wardrobe({
       </div>
 
       {reanalyzeStatus && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-700 p-6 rounded-3xl w-full max-w-lg flex flex-col gap-4">
-            <h2 className="text-xl font-black text-white uppercase tracking-tighter">
+        <div className="fixed inset-0 z-50 bg-white/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#eef2e6] border border-[#d2d9c8] p-6 rounded-3xl w-full max-w-lg flex flex-col gap-4">
+            <h2 className="text-xl font-black text-[#2b3327] uppercase tracking-tighter">
               {t("reanalyzing", "Re-evaluating DB...")}
             </h2>
-            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-white rounded-full h-2 overflow-hidden">
               <div
-                className="bg-cyan-500 h-full transition-all"
+                className="bg-[#6b8555] h-full transition-all"
                 style={{
                   width: `${(reanalyzeStatus.current / reanalyzeStatus.total) * 100}%`,
                 }}
               />
             </div>
             <div className="flex items-center justify-between">
-              <p className="text-sm text-cyan-400 font-bold uppercase tracking-widest flex items-center gap-2">
+              <p className="text-sm text-[#556943] font-bold uppercase tracking-widest flex items-center gap-2">
                 {reanalyzeStatus.current < reanalyzeStatus.total &&
                   !abortRef.current && (
-                    <Loader2 size={14} className="animate-spin text-cyan-500" />
+                    <Loader2 size={14} className="animate-spin text-[#6b8555]" />
                   )}
                 Processing {reanalyzeStatus.current} / {reanalyzeStatus.total}
               </p>
               {reanalyzeStatus.current < reanalyzeStatus.total &&
                 !abortRef.current && (
-                  <p className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                  <p className="text-xs text-[#84917a] font-medium flex items-center gap-1">
                     <Clock size={12} />~
                     {Math.ceil(
                       ((reanalyzeStatus.total - reanalyzeStatus.current) * 2) /
@@ -488,9 +529,9 @@ export function Wardrobe({
                   </p>
                 )}
             </div>
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 h-48 overflow-y-auto flex flex-col gap-2 font-mono text-xs">
+            <div className="bg-[#e4ebd8] border border-[#d2d9c8] rounded-xl p-4 h-48 overflow-y-auto flex flex-col gap-2 font-mono text-xs">
               {reanalyzeStatus.logs.map((log, i) => (
-                <div key={i} className="text-slate-400">
+                <div key={i} className="text-[#6b7863]">
                   {log}
                 </div>
               ))}
@@ -500,7 +541,7 @@ export function Wardrobe({
                 }}
               />
             </div>
-            <p className="text-[10px] text-slate-500 text-center leading-tight">
+            <p className="text-[10px] text-[#84917a] text-center leading-tight">
               {t(
                 "cancel_explanation",
                 "Если вы нажмете Отмена, процесс остановится. Уже оцененные вещи сохранятся в базе.",
@@ -510,7 +551,7 @@ export function Wardrobe({
             abortRef.current ? (
               <button
                 onClick={() => setReanalyzeStatus(null)}
-                className="w-full mt-2 py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black uppercase tracking-widest text-xs rounded-xl transition-colors"
+                className="w-full mt-2 py-3 bg-[#6b8555] hover:bg-[#556943] text-white font-black uppercase tracking-widest text-xs rounded-xl transition-colors"
               >
                 {t("admin_close", "Close")}
               </button>
@@ -533,7 +574,7 @@ export function Wardrobe({
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6 relative">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6 relative">
         {currentImageSrc && (
           <CropEditor
             imageSrc={currentImageSrc}
@@ -544,27 +585,31 @@ export function Wardrobe({
 
         <div
           {...getRootProps()}
-          className={`aspect-[3/4] rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all ${
+          className={`aspect-[2/3] rounded-[2rem] border-2 border-dashed flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all ${
             isDragActive
-              ? "border-cyan-400 bg-cyan-400/5"
-              : "border-slate-700 bg-slate-800/20 hover:border-slate-500 hover:bg-slate-800/40"
+              ? "border-[#6b8555] bg-[#6b8555]/5"
+              : "border-[#d2d9c8] bg-[#e4ebd8]/20 hover:border-[#6b8555] hover:bg-[#e4ebd8]/40"
           } ${uploading ? "opacity-50 pointer-events-none" : ""}`}
         >
           <input {...getInputProps()} />
-          <div className="w-12 h-12 bg-slate-800 rounded-2xl flex items-center justify-center mb-4 border border-slate-700 group-hover:scale-110 transition-transform">
-            <UploadCloud className="text-cyan-400" size={24} />
+          <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-4 border border-[#d2d9c8] group-hover:scale-110 transition-transform">
+            <UploadCloud className="text-[#556943]" size={24} />
           </div>
-          <p className="text-white text-xs font-black uppercase tracking-widest leading-normal">
+          <p className="text-[#2b3327] text-xs font-black uppercase tracking-widest leading-normal">
             {uploading
               ? t("saving")
               : activeTab === "internet"
                 ? t("add_inspiration", "Добавить идею")
                 : t("add_item")}
           </p>
+          <div className="mt-4 flex flex-col items-center gap-1 opacity-60">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#556943]">Limit: ~10 MB</p>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-[#6b7863]">Resized to ~150 KB</p>
+          </div>
         </div>
 
         {filteredItems.map((item) => (
-          <DraggableItem key={item.id} item={item} userId={userId} />
+          <DraggableItem key={item.id} item={item} userId={userId} allItems={items} outfits={outfits} />
         ))}
       </div>
     </div>

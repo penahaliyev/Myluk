@@ -61,18 +61,12 @@ export function DayCard(props: { day: string, outfit?: Outfit, userId: string, a
   const WeatherIcon = weather?.condition === 'Rainy' ? CloudRain : weather?.condition === 'Cloudy' ? Cloud : Sun;
 
   return (
-    <div className="flex flex-col gap-3 h-full group">
-      <div className="flex justify-between items-center px-2">
-        <h3 className="text-[13px] font-black uppercase tracking-widest text-[#ececf1] leading-none">
-          {t(day)}
-        </h3>
-      </div>
-
+    <div className="flex flex-col gap-3 group">
       <div 
         ref={dropRef as any}
         className={cn(
-          "bg-slate-800 rounded-3xl border flex flex-col min-h-[220px] flex-1 transition-colors relative overflow-hidden",
-          isOver ? "border-cyan-400 bg-slate-800/80" : "border-slate-700 hover:border-slate-500"
+          "bg-white rounded-3xl border flex flex-col aspect-[2/3] transition-colors relative overflow-hidden",
+          isOver ? "border-[#6b8555] bg-[#6b8555]/5" : "border-[#d2d9c8] hover:border-[#6b8555]"
         )}
       >
         {/* Background Images */}
@@ -81,10 +75,10 @@ export function DayCard(props: { day: string, outfit?: Outfit, userId: string, a
             {outfitItems.map((item, i) => (
                <div key={item.id} className="group/item overflow-hidden relative flex-1 min-w-[50%] h-full cursor-zoom-in" onClick={() => setZoomedImage(item.imageUrl)}>
                  <img src={item.imageUrl} alt={item.category} className="w-full h-full object-cover transition-transform duration-500 group-hover/item:scale-110" />
-                 <div className="absolute inset-0 bg-black/10 group-hover/item:bg-black/30 transition-colors pointer-events-none" />
+                 <div className="absolute inset-0 bg-[#6b8555]/10 group-hover/item:bg-[#6b8555]/30 transition-colors pointer-events-none" />
                  <button 
                    onClick={(e) => removeItem(item.id, e)}
-                   className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 transition-opacity z-10 hover:bg-red-500"
+                   className="absolute top-2 right-2 p-1.5 bg-white/90 text-[#2b3327] rounded-full opacity-100 lg:opacity-0 lg:group-hover/item:opacity-100 transition-opacity z-10 hover:bg-red-500"
                    title="Remove"
                  >
                    <Trash2 className="w-3 h-3" />
@@ -95,23 +89,29 @@ export function DayCard(props: { day: string, outfit?: Outfit, userId: string, a
         )}
 
         {outfitItems.length === 0 && (
-          <div className="m-auto flex items-center justify-center text-center text-slate-500 text-[10px] font-black uppercase tracking-widest italic p-4 leading-relaxed">
+          <div className="m-auto flex items-center justify-center text-center text-[#84917a] text-[10px] font-black uppercase tracking-widest italic p-4 leading-relaxed">
             {t('drop_text')}
           </div>
         )}
       </div>
 
+      <div className="flex flex-col gap-2 px-1">
+        <h3 className="text-xs font-black uppercase tracking-widest text-[#556943] text-center w-full">
+          {t(day)}
+        </h3>
+      </div>
+
       {weather && (
-        <div className="flex items-center justify-between px-3 py-2 bg-slate-800 rounded-2xl border border-slate-700 transition-colors group-hover:border-slate-600">
+        <div className="flex items-center justify-between px-3 py-2 bg-white rounded-2xl border border-[#d2d9c8] transition-colors group-hover:border-slate-600">
            <div className="flex items-center gap-2">
-              <WeatherIcon size={16} className={weather.condition === 'Clear' ? 'text-yellow-400' : 'text-cyan-400'} />
+              <WeatherIcon size={16} className={weather.condition === 'Clear' ? 'text-yellow-400' : 'text-[#556943]'} />
               <div className="flex items-baseline gap-1">
-                <span className="text-sm font-black text-white">{weather.tempMax}°</span>
+                <span className="text-sm font-black text-[#2b3327]">{weather.tempMax}°</span>
               </div>
            </div>
-           <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+           <div className="flex items-center gap-3 text-[10px] text-[#6b7863] font-bold uppercase tracking-widest">
               <div className="flex items-center gap-1" title="Rain probability"><Droplets size={12} className="text-blue-400" />{weather.rainProb}%</div>
-              <div className="flex items-center gap-1" title="Wind speed"><Wind size={12} className="text-slate-300" />{weather.windSpeed}</div>
+              <div className="flex items-center gap-1" title="Wind speed"><Wind size={12} className="text-[#505c4a]" />{weather.windSpeed}</div>
            </div>
          </div>
       )}

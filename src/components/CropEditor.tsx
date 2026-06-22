@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
-import Cropper from 'react-easy-crop';
-import getCroppedImg from '../lib/cropImage';
+import React, { useState, useRef } from 'react';
+import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
 import { useTranslation } from 'react-i18next';
-import { X, Check, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 
 interface CropEditorProps {
   imageSrc: string;
@@ -12,21 +12,57 @@ interface CropEditorProps {
 
 export function CropEditor({ imageSrc, onConfirm, onCancel }: CropEditorProps) {
   const { t } = useTranslation();
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [rotation, setRotation] = useState(0);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
   const [processing, setProcessing] = useState(false);
-
-  const onCropComplete = useCallback((croppedArea: any, croppedAreaPixels: any) => {
-    setCroppedAreaPixels(croppedAreaPixels);
-  }, []);
+  const imgRef = useRef<HTMLImageElement | null>(null);
 
   const handleConfirm = async () => {
-    if (!croppedAreaPixels) return;
+    if (!completedCrop || !imgRef.current) return;
     setProcessing(true);
     try {
-      const base64 = await getCroppedImg(imageSrc, croppedAreaPixels, rotation);
+      const image = imgRef.current;
+      const scaleX = image.naturalWidth / image.width;
+      const scaleY = image.naturalHeight / image.height;
+
+      const canvas = document.createElement('canvas');
+      const MAX_DIM = 1000;
+      let targetWidth = completedCrop.width * scaleX;
+      let targetHeight = completedCrop.height * scaleY;
+
+      if (targetWidth > targetHeight) {
+        if (targetWidth > MAX_DIM) {
+          targetHeight = Math.round(targetHeight * (MAX_DIM / targetWidth));
+          targetWidth = MAX_DIM;
+        }
+      } else {
+        if (targetHeight > MAX_DIM) {
+          targetWidth = Math.round(targetWidth * (MAX_DIM / targetHeight));
+          targetHeight = MAX_DIM;
+        }
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.imageSmoothingQuality = 'high';
+
+      // Draw the cropped area
+      ctx.drawImage(
+        image,
+        completedCrop.x * scaleX,
+        completedCrop.y * scaleY,
+        completedCrop.width * scaleX,
+        completedCrop.height * scaleY,
+        0,
+        0,
+        targetWidth,
+        targetHeight
+      );
+
+      const base64 = canvas.toDataURL('image/webp', 0.85);
       await onConfirm(base64);
     } catch (e) {
       console.error(e);
@@ -36,84 +72,34 @@ export function CropEditor({ imageSrc, onConfirm, onCancel }: CropEditorProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl p-4">
-      <div className="bg-slate-900 border border-slate-700/50 rounded-3xl w-full max-w-2xl flex flex-col h-[85vh] shadow-[0_0_50px_-12px_rgba(34,211,238,0.3)]">
-        <div className="p-6 flex items-center justify-between border-b border-slate-800">
-          <h3 className="text-xl font-black text-white uppercase tracking-tighter">{t('crop')}</h3>
-          <button onClick={onCancel} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#eef2e6]/95 backdrop-blur-xl p-4">
+      <div className="bg-[#eef2e6] border border-[#d2d9c8]/50 rounded-3xl w-full max-w-4xl flex flex-col h-[95vh] shadow-[0_0_50px_-12px_rgba(107,133,85,0.3)]">
+        <div className="p-6 flex items-center justify-between border-b border-[#d2d9c8]">
+          <h3 className="text-xl font-black text-[#2b3327] uppercase tracking-tighter">{t('crop')}</h3>
+          <button onClick={onCancel} className="p-2 hover:bg-white rounded-full text-[#6b7863] transition-colors">
             <X size={24} />
           </button>
         </div>
 
-        <div className="relative flex-1 bg-black overflow-hidden m-4 rounded-2xl border border-slate-800">
-          <Cropper
-            image={imageSrc}
-            crop={crop}
-            zoom={zoom}
-            rotation={rotation}
-            aspect={3 / 4}
-            onCropChange={setCrop}
-            onCropComplete={onCropComplete}
-            onZoomChange={setZoom}
-          />
+        <div className="relative flex-1 bg-black overflow-hidden m-4 rounded-2xl flex items-center justify-center border border-[#d2d9c8]">
+          <ReactCrop crop={crop} onChange={(_, percentCrop) => setCrop(percentCrop)} onComplete={(c) => setCompletedCrop(c)} aspect={9 / 16}>
+            <img ref={imgRef} src={imageSrc} alt="Crop" style={{ maxHeight: 'calc(95vh - 200px)' }} className="w-auto object-contain" />
+          </ReactCrop>
         </div>
 
-        <div className="p-6 bg-slate-900/50 flex flex-col gap-6">
-          <div className="flex items-center gap-6">
-             <div className="flex-1 flex flex-col gap-2">
-                <div className="flex justify-between text-[10px] text-slate-500 uppercase font-bold tracking-widest">
-                  <span>Zoom</span>
-                  <span>{Math.round(zoom * 100)}%</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <ZoomOut size={16} className="text-slate-500" />
-                  <input
-                    type="range"
-                    value={zoom}
-                    min={1}
-                    max={3}
-                    step={0.1}
-                    aria-labelledby="Zoom"
-                    onChange={(e) => setZoom(Number(e.target.value))}
-                    className="flex-1 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                  <ZoomIn size={16} className="text-slate-500" />
-                </div>
-             </div>
-
-             <div className="flex-1 flex flex-col gap-2">
-                <div className="flex justify-between text-[10px] text-slate-500 uppercase font-bold tracking-widest">
-                  <span>Rotation</span>
-                  <span>{rotation}°</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <RotateCw size={16} className="text-slate-500" />
-                  <input
-                    type="range"
-                    value={rotation}
-                    min={0}
-                    max={360}
-                    step={1}
-                    aria-labelledby="Rotation"
-                    onChange={(e) => setRotation(Number(e.target.value))}
-                    className="flex-1 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                </div>
-             </div>
-          </div>
-
+        <div className="p-6 bg-[#eef2e6]/50 flex flex-col gap-6">
           <div className="flex gap-4">
             <button
               onClick={onCancel}
-              className="flex-1 py-4 px-6 rounded-2xl border border-slate-700 text-slate-300 font-bold uppercase tracking-widest text-xs hover:bg-slate-800 transition-all disabled:opacity-50"
+              className="flex-1 py-4 px-6 rounded-2xl border border-[#d2d9c8] text-[#505c4a] font-bold uppercase tracking-widest text-xs hover:bg-white transition-all disabled:opacity-50"
               disabled={processing}
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
-              className="flex-1 py-4 px-6 rounded-2xl bg-cyan-500 text-slate-950 font-black uppercase tracking-widest text-xs hover:bg-cyan-400 shadow-lg shadow-cyan-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              disabled={processing}
+              className="flex-1 py-4 px-6 rounded-2xl bg-[#6b8555] text-white font-black uppercase tracking-widest text-xs hover:bg-[#556943] shadow-lg shadow-[#6b8555]/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              disabled={processing || !completedCrop?.width || !completedCrop?.height}
             >
               {processing ? 'Processing...' : <><Check size={18} /> Confirm</>}
             </button>

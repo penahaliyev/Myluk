@@ -1,3 +1,4 @@
+import { fetchApi } from '../lib/utils';
 import { useTranslation } from 'react-i18next';
 import { Outfit, WardrobeItem, UserProfile } from '../lib/hooks';
 import { DayCard } from './DayCard';
@@ -23,7 +24,7 @@ export function WeeklyBoard({ items, outfits, userId, profile }: { items: Wardro
     }
     setGenerating(true);
     try {
-      const resp = await fetch('/api/generate-weekly-plan', {
+      const data = await fetchApi('/api/generate-weekly-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -33,7 +34,6 @@ export function WeeklyBoard({ items, outfits, userId, profile }: { items: Wardro
           city: weatherData?.city
         })
       });
-      const data = await resp.json();
       
       const batch = writeBatch(db);
       
@@ -76,14 +76,14 @@ export function WeeklyBoard({ items, outfits, userId, profile }: { items: Wardro
         <button 
           onClick={handleGeneratePlan} 
           disabled={generating}
-          className="flex items-center gap-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 px-8 py-4 rounded-full font-black shadow-2xl shadow-cyan-500/40 hover:shadow-cyan-500/60 transition-all disabled:opacity-50 uppercase tracking-tighter text-sm group"
+          className="flex items-center gap-3 bg-gradient-to-r from-[#6b8555] to-[#8ca874] text-white px-8 py-4 rounded-full font-black shadow-2xl shadow-[#6b8555]/40 hover:shadow-[#6b8555]/60 transition-all disabled:opacity-50 uppercase tracking-tighter text-sm group"
         >
           <Sparkles className="w-5 h-5 group-hover:animate-pulse" />
           {generating ? t('loading') : t('generate_plan')}
         </button>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6 relative">
         {DAYS.map((day, index) => {
           const outfit = getOutfitForDay(day);
           

@@ -41,13 +41,13 @@ export function ShoppingList({ items, userId }: { items: ShoppingItem[], userId:
 
   return (
     <div className="flex flex-col gap-6 max-w-2xl mx-auto w-full">
-      <div className="flex items-center gap-4 bg-slate-800 p-6 rounded-3xl border border-slate-700">
-        <div className="w-12 h-12 bg-cyan-500/20 rounded-2xl flex items-center justify-center">
-          <ShoppingBag className="text-cyan-400" size={24} />
+      <div className="flex items-center gap-4 bg-white p-6 rounded-3xl border border-[#d2d9c8]">
+        <div className="w-12 h-12 bg-[#6b8555]/20 rounded-2xl flex items-center justify-center">
+          <ShoppingBag className="text-[#556943]" size={24} />
         </div>
         <div>
-          <h2 className="text-xl font-black text-white uppercase tracking-tighter">План Закупок</h2>
-          <p className="text-sm text-slate-400">Список вещей, которые ИИ советует добавить в гардероб</p>
+          <h2 className="text-xl font-black text-[#2b3327] uppercase tracking-tighter">План Закупок</h2>
+          <p className="text-sm text-[#6b7863]">Список вещей, которые ИИ советует добавить в гардероб</p>
         </div>
       </div>
 
@@ -57,12 +57,12 @@ export function ShoppingList({ items, userId }: { items: ShoppingItem[], userId:
           value={newItemName}
           onChange={(e) => setNewItemName(e.target.value)}
           placeholder="Добавить новую вещь..."
-          className="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-all font-medium"
+          className="flex-1 bg-white border border-[#d2d9c8] rounded-2xl px-6 py-4 text-[#2b3327] focus:outline-none focus:border-[#6b8555] focus:ring-1 focus:ring-[#6b8555] transition-all font-medium"
         />
         <button
           type="submit"
           disabled={adding || !newItemName.trim()}
-          className="bg-cyan-500 text-slate-950 px-8 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-cyan-400 transition-all disabled:opacity-50 shadow-lg shadow-cyan-500/20 flex items-center gap-2"
+          className="bg-[#6b8555] text-white px-8 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-[#556943] transition-all disabled:opacity-50 shadow-lg shadow-[#6b8555]/20 flex items-center gap-2"
         >
           <Plus size={16} />
           Добавить
@@ -71,19 +71,19 @@ export function ShoppingList({ items, userId }: { items: ShoppingItem[], userId:
 
       <div className="flex flex-col gap-3">
         {items.length === 0 ? (
-          <div className="text-center py-12 text-slate-500 text-sm font-bold uppercase tracking-widest italic border border-dashed border-slate-700 rounded-3xl">
+          <div className="text-center py-12 text-[#84917a] text-sm font-bold uppercase tracking-widest italic border border-dashed border-[#d2d9c8] rounded-3xl">
             Список покупок пуст
           </div>
         ) : (
           items.map(item => (
-            <div key={item.id} className="flex items-center justify-between bg-slate-800 p-4 rounded-2xl border border-slate-700 group hover:border-slate-600 transition-all">
+            <div key={item.id} className="flex items-center justify-between bg-white p-4 rounded-2xl border border-[#d2d9c8] group hover:border-slate-600 transition-all">
               <div className="flex flex-col">
-                <span className="text-white font-medium">{item.name}</span>
-                {item.reason && <span className="text-xs text-slate-400 italic">"{item.reason}"</span>}
+                <span className="text-[#2b3327] font-medium">{item.name}</span>
+                {item.reason && <span className="text-xs text-[#6b7863] italic">"{item.reason}"</span>}
               </div>
               <button 
                 onClick={() => handleDelete(item.id)}
-                className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                className="p-2 text-[#84917a] hover:text-red-400 hover:bg-red-400/10 rounded-full transition-all opacity-0 group-hover:opacity-100"
               >
                 <Trash2 size={18} />
               </button>

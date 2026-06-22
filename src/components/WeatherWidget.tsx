@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Cloud, Sun, CloudRain, Thermometer, MapPin } from 'lucide-react';
 import { Wind, Droplets } from 'lucide-react';
+import { fetchApi } from '../lib/utils';
 
 export interface DailyWeather {
   date: string; // YYYY-MM-DD
@@ -42,8 +43,7 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
       try {
         setLoading(true);
         // 1. Geocode City
-        const geoResp = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=${i18n.language}`);
-        const geoData = await geoResp.json();
+        const geoData = await fetchApi(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=${i18n.language}`);
         
         if (!geoData.results || geoData.results.length === 0) {
           setError(t('city_not_found', 'City not found'));
@@ -54,8 +54,7 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
         const { latitude, longitude, name } = geoData.results[0];
 
         // 2. Fetch Weather
-        const weatherResp = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto`);
-        const weatherData = await weatherResp.json();
+        const weatherData = await fetchApi(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto`);
 
         // 3. Parse Data
         const currentTemp = Math.round(weatherData.current_weather.temperature);
@@ -96,32 +95,32 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
     fetchWeather();
   }, [city]);
 
-  if (loading) return <div className="text-slate-500 text-xs animate-pulse">{t('weather_loading', 'Loading weather...')}</div>;
-  if (error || !weather) return <div className="text-slate-500 text-xs">{error || t('weather_error')}</div>;
+  if (loading) return <div className="text-[#84917a] text-xs animate-pulse">{t('weather_loading', 'Loading weather...')}</div>;
+  if (error || !weather) return <div className="text-[#84917a] text-xs">{error || t('weather_error')}</div>;
 
   const Icon = weather.currentCondition === 'Rainy' ? CloudRain : weather.currentCondition === 'Cloudy' ? Cloud : Sun;
   const tCondition = t(weather.currentCondition.toLowerCase(), weather.currentCondition);
 
   return (
-    <div className="flex items-center gap-6 bg-slate-800/50 backdrop-blur-md px-6 py-3 rounded-full border border-slate-700">
-      <div className="flex items-center gap-2 text-white">
-        <MapPin className="w-4 h-4 text-cyan-400" />
+    <div className="flex items-center gap-6 bg-slate-800/50 backdrop-blur-md px-6 py-3 rounded-full border border-[#d2d9c8]">
+      <div className="flex items-center gap-2 text-[#2b3327]">
+        <MapPin className="w-4 h-4 text-[#556943]" />
         <span className="text-sm font-bold uppercase tracking-wider">{weather.city}</span>
       </div>
-      <div className="h-4 w-px bg-slate-700" />
+      <div className="h-4 w-px bg-[#d2d9c8]" />
       <div className="flex items-center gap-3">
-        <Icon className={weather.currentCondition === 'Clear' ? 'text-yellow-400' : 'text-slate-400'} size={20} />
+        <Icon className={weather.currentCondition === 'Clear' ? 'text-yellow-400' : 'text-[#6b7863]'} size={20} />
         <div className="flex flex-col">
-          <span className="text-lg font-black text-white leading-none">{weather.currentTemp}°</span>
-          <span className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">{tCondition}</span>
+          <span className="text-lg font-black text-[#2b3327] leading-none">{weather.currentTemp}°</span>
+          <span className="text-[10px] text-[#6b7863] uppercase tracking-widest font-bold">{tCondition}</span>
         </div>
       </div>
-      <div className="h-4 w-px bg-slate-700" />
+      <div className="h-4 w-px bg-[#d2d9c8]" />
       <div className="text-right flex flex-col items-end">
-        <span className="text-xs font-bold text-slate-300 leading-none capitalize">
+        <span className="text-xs font-bold text-[#505c4a] leading-none capitalize">
           {new Date().toLocaleDateString(i18n.language === 'en' ? 'en-US' : (i18n.language === 'ru' ? 'ru-RU' : 'az-AZ'), { weekday: 'long' })}
         </span>
-        <span className="text-[10px] text-slate-500 uppercase tracking-widest">
+        <span className="text-[10px] text-[#84917a] uppercase tracking-widest">
           {new Date().toLocaleDateString(i18n.language === 'en' ? 'en-US' : (i18n.language === 'ru' ? 'ru-RU' : 'az-AZ'), { day: 'numeric', month: 'short' })}
         </span>
       </div>

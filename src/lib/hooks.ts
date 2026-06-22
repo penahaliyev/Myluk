@@ -13,7 +13,11 @@ export interface WardrobeItem {
   tags?: string[];
   rating?: number;
   advice?: string;
+  itemsIds?: string[];
+  usedInLooks?: string[];
+  duplicateOfId?: string;
   createdAt: Date;
+  displayId?: string;
 }
 
 export interface ShoppingItem {
@@ -75,7 +79,35 @@ export function useHooks() {
 
     const qItems = query(collection(db, `users/${user.uid}/wardrobeItems`), where('userId', '==', user.uid));
     const unsubItems = onSnapshot(qItems, (snapshot) => {
-      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WardrobeItem)));
+      const rawItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WardrobeItem));
+      
+      const getTimestamp = (val: any): number => {
+        if (!val) return 0;
+        if (val instanceof Date) return val.getTime();
+        if (typeof val.toDate === 'function') {
+          try {
+            return val.toDate().getTime();
+          } catch (_) {}
+        }
+        if (typeof val.seconds === 'number') return val.seconds * 1000;
+        if (typeof val === 'string') return new Date(val).getTime();
+        if (typeof val === 'number') return val;
+        return 0;
+      };
+
+      const sorted = [...rawItems].sort((a, b) => {
+        const timeA = getTimestamp(a.createdAt);
+        const timeB = getTimestamp(b.createdAt);
+        if (timeA !== timeB) return timeA - timeB;
+        return a.id.localeCompare(b.id);
+      });
+
+      const mapped = rawItems.map(item => {
+        const displayId = String(item.id).substring(item.id.length - 4).toUpperCase();
+        return { ...item, displayId };
+      });
+
+      setItems(mapped);
     }, error => handleFirestoreError(error, OperationType.LIST, `users/${user.uid}/wardrobeItems`));
 
     const qOutfits = query(collection(db, `users/${user.uid}/outfits`), where('userId', '==', user.uid));

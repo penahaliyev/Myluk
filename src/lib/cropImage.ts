@@ -42,7 +42,7 @@ export default async function getCroppedImg(
   }
 
   // Limit size to avoid Firestore 1MB limit & increase speed
-  const MAX_DIM = 600;
+  const MAX_DIM = 1000;
   let targetWidth = pixelCrop.width;
   let targetHeight = pixelCrop.height;
 
@@ -76,5 +76,5 @@ export default async function getCroppedImg(
   )
 
   // As Base64 string
-  return croppedCanvas.toDataURL('image/webp', 0.7)
+  return croppedCanvas.toDataURL('image/webp', 0.85)
 }

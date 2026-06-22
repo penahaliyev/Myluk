@@ -23,7 +23,7 @@ export function Home() {
     return (
       <div className="flex flex-col items-center justify-center py-32 px-4 text-center">
         <h2 className="text-4xl font-black tracking-tighter uppercase mb-4">{t('app_name').split(' / ')[0]}</h2>
-        <p className="text-slate-400 max-w-md mx-auto">{t('no_items')}</p>
+        <p className="text-[#6b7863] max-w-md mx-auto">{t('no_items')}</p>
       </div>
     );
   }
@@ -43,14 +43,14 @@ export function Home() {
       )}
 
       <div className="p-8 md:p-12 space-y-12 max-w-7xl mx-auto flex-1">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 border-b border-slate-700 pb-8">
-          <div className="flex bg-slate-800 p-1.5 rounded-full border border-slate-700">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 border-b border-[#d2d9c8] pb-8">
+          <div className="flex bg-white p-1.5 rounded-full border border-[#d2d9c8]">
             <button
               onClick={() => setActiveTab('main')}
               className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${
                 activeTab === 'main' 
-                  ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' 
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                  ? 'bg-[#6b8555] text-white shadow-lg shadow-[#6b8555]/20' 
+                  : 'text-[#6b7863] hover:text-[#2b3327] hover:bg-[#d2d9c8]/50'
               }`}
             >
               <LayoutDashboard size={16} />
@@ -60,14 +60,14 @@ export function Home() {
               onClick={() => setActiveTab('shopping')}
               className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all ${
                 activeTab === 'shopping' 
-                  ? 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20' 
-                  : 'text-slate-400 hover:text-white hover:bg-slate-700/50'
+                  ? 'bg-[#6b8555] text-white shadow-lg shadow-[#6b8555]/20' 
+                  : 'text-[#6b7863] hover:text-[#2b3327] hover:bg-[#d2d9c8]/50'
               }`}
             >
               <ShoppingBag size={16} />
               <span className="hidden sm:block">{t('home_tab_shopping', 'Покупки')}</span>
               {shoppingList.length > 0 && (
-                <span className="bg-slate-900 text-cyan-400 px-2 py-0.5 rounded-full text-[10px]">
+                <span className="bg-[#eef2e6] text-[#556943] px-2 py-0.5 rounded-full text-[10px]">
                   {shoppingList.length}
                 </span>
               )}
@@ -78,18 +78,18 @@ export function Home() {
             {isAdmin && (
               <button 
                 onClick={() => setShowAdmin(true)}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-slate-700"
+                className="flex items-center gap-2 bg-white hover:bg-[#d2d9c8] text-[#2b3327] px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-[#d2d9c8]"
               >
-                <ShieldCheck size={16} className="text-cyan-400" />
+                <ShieldCheck size={16} className="text-[#556943]" />
                 <span className="hidden sm:block">{t('home_tab_admin', 'Admin')}</span>
               </button>
             )}
 
             <button 
               onClick={() => setShowProfile(true)}
-              className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-slate-700"
+              className="flex items-center gap-2 bg-white hover:bg-[#d2d9c8] text-[#2b3327] px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-[#d2d9c8]"
             >
-              <Settings size={16} className="text-cyan-400" />
+              <Settings size={16} className="text-[#556943]" />
               <span className="hidden sm:block">{t('home_tab_cabinet', 'Кабинет')}</span>
             </button>
           </div>
@@ -99,16 +99,16 @@ export function Home() {
           <div className="space-y-16">
             <section>
               <div className="flex items-center justify-between mb-8">
-                <h2 className="text-4xl font-black tracking-tighter uppercase text-white">{t('home_title')}</h2>
+                <h2 className="text-4xl font-black tracking-tighter uppercase text-[#2b3327]">{t('home_title')}</h2>
               </div>
               <WeeklyBoard items={items} outfits={outfits} userId={user.uid} profile={profile} />
             </section>
 
             <section>
-              <div className="flex items-center justify-between mb-8 mt-16 border-t border-slate-700 pt-16">
-                <h2 className="text-4xl font-black tracking-tighter uppercase text-white">{t('wardrobe')}</h2>
+              <div className="flex items-center justify-between mb-8 mt-16 border-t border-[#d2d9c8] pt-16">
+                <h2 className="text-4xl font-black tracking-tighter uppercase text-[#2b3327]">{t('wardrobe')}</h2>
               </div>
-              <Wardrobe items={items} userId={user.uid} />
+              <Wardrobe items={items} outfits={outfits} userId={user.uid} />
             </section>
           </div>
         )}
