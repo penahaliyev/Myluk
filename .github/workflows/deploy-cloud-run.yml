@@ -9,7 +9,7 @@ on:
 env:
   PROJECT_ID: myluk-496908
   REGION: us-west1
-  SERVICE: styledeck-282564706999
+  SERVICE: myluk
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:

@@ -78,7 +78,7 @@ export function WeatherWidget({ city, onWeatherData }: { city?: string, onWeathe
         const data: WeatherData = {
           currentTemp,
           currentCondition,
-          city: name || city,
+          city: city,
           daily: dailyRecord
         };
 

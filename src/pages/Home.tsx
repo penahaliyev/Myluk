@@ -6,18 +6,14 @@ import { WeeklyBoard } from '../components/WeeklyBoard';
 import { Wardrobe } from '../components/Wardrobe';
 import { ShoppingList } from '../components/ShoppingList';
 import { ProfileModal } from '../components/ProfileModal';
-import { FloatingChat } from '../components/FloatingChat';
-import { AdminPanel } from '../components/AdminPanel';
 import { useState } from 'react';
-import { Settings, ShoppingBag, LayoutDashboard, ShieldCheck } from 'lucide-react';
+import { Settings, ShoppingBag, LayoutDashboard } from 'lucide-react';
 
 export function Home() {
   const { user, items, outfits, profile, shoppingList } = useHooks();
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'main' | 'shopping'>('main');
   const [showProfile, setShowProfile] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
-  const isAdmin = user?.email === 'penahaliyev@gmail.com';
 
   if (!user) {
     return (
@@ -36,10 +32,6 @@ export function Home() {
           profile={profile} 
           onClose={() => setShowProfile(false)} 
         />
-      )}
-
-      {showAdmin && (
-        <AdminPanel onClose={() => setShowAdmin(false)} />
       )}
 
       <div className="p-8 md:p-12 space-y-12 max-w-7xl mx-auto flex-1">
@@ -75,16 +67,6 @@ export function Home() {
           </div>
 
           <div className="flex items-center gap-4">
-            {isAdmin && (
-              <button 
-                onClick={() => setShowAdmin(true)}
-                className="flex items-center gap-2 bg-white hover:bg-[#d2d9c8] text-[#2b3327] px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-[#d2d9c8]"
-              >
-                <ShieldCheck size={16} className="text-[#556943]" />
-                <span className="hidden sm:block">{t('home_tab_admin', 'Admin')}</span>
-              </button>
-            )}
-
             <button 
               onClick={() => setShowProfile(true)}
               className="flex items-center gap-2 bg-white hover:bg-[#d2d9c8] text-[#2b3327] px-6 py-3 rounded-full text-xs font-bold uppercase tracking-widest transition-all border border-[#d2d9c8]"
@@ -118,8 +100,6 @@ export function Home() {
             <ShoppingList items={shoppingList} userId={user.uid} />
           </section>
         )}
-        
-        <FloatingChat wardrobeItems={items} profile={profile} />
       </div>
     </DndProvider>
   );

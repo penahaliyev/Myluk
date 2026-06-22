@@ -4,18 +4,15 @@ import { WardrobeItem, UserProfile, Outfit } from '../lib/hooks';
 import { useTranslation } from 'react-i18next';
 import { doc, deleteDoc, updateDoc, collection, setDoc, serverTimestamp, getDocs, query, where, getDoc, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Trash2, Sparkles, Wand2, Star, Crop, Wand, X, Info, CalendarPlus } from 'lucide-react';
+import { Trash2, Crop, X, CalendarPlus } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn, fetchApi } from '../lib/utils';
+import { cn } from '../lib/utils';
 import { CropEditor } from './CropEditor';
 import { ImageModal } from './ImageModal';
 
 export function DraggableItem(props: { item: WardrobeItem, userId: string, profile?: UserProfile | null, allItems?: WardrobeItem[], outfits?: Outfit[], key?: string | number }) {
-  const { item, userId, profile, allItems, outfits } = props;
-  const { t, i18n } = useTranslation();
-  const [evaluating, setEvaluating] = useState(false);
-  const [improving, setImproving] = useState(false);
-  const [showAdvice, setShowAdvice] = useState(false);
+  const { item, userId, allItems, outfits } = props;
+  const { t } = useTranslation();
   const [editingImage, setEditingImage] = useState(false);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -164,120 +161,6 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
     }
   };
 
-  const handleEvaluate = async () => {
-    setEvaluating(true);
-    try {
-      const data = await fetchApi('/api/evaluate-single-item', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item, language: i18n.language, profile })
-      });
-      if (data.rating) {
-        await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), {
-          rating: data.rating,
-          advice: data.advice || ""
-        });
-        toast.success(t('evaluated', 'Evaluated!'));
-      }
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setEvaluating(false);
-    }
-  };
-
-  const handleRetryAnalyze = async () => {
-    setEvaluating(true);
-    try {
-      const aiData = await fetchApi('/api/analyze-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: item.imageUrl, language: i18n.language, existingLooks: [] })
-      });
-      
-      const isDuplicate = aiData.type === 'Duplicate';
-      const finalType = isDuplicate ? 'Duplicate' : (aiData.type === 'Look' ? 'Look' : 'Item');
-
-      await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), {
-        type: finalType,
-        category: aiData.category || "Other",
-        color: aiData.color || "Unknown",
-        tags: aiData.tags || [],
-        rating: aiData.rating || 0,
-        advice: aiData.advice || ""
-      });
-
-      if (aiData.type === 'Look' && aiData.extractedItems && Array.isArray(aiData.extractedItems)) {
-        const itemPromises = aiData.extractedItems.map(async (extractedItem: any) => {
-          const itemRef = doc(collection(db, `users/${userId}/wardrobeItems`));
-          return setDoc(itemRef, {
-            userId,
-            imageUrl: item.imageUrl,
-            type: "Item",
-            category: extractedItem.category || extractedItem.name || "Unknown",
-            color: extractedItem.color || "Unknown",
-            source: item.source,
-            tags: [extractedItem.attributes].filter(Boolean),
-            rating: 0,
-            advice: t('extracted_from_look', 'Extracted from Look'),
-            createdAt: serverTimestamp()
-          });
-        });
-        await Promise.all(itemPromises);
-      }
-      
-      toast.success(t('analyzed', 'AI assessment complete!'));
-    } catch (e: any) {
-      toast.error(t('analyze_failed', 'Failed to tag: ') + e.message);
-    } finally {
-      setEvaluating(false);
-    }
-  };
-
-  const [activeTab, setActiveTab] = useState<'info'|'improve'>('info');
-
-  const handleImprove = async () => {
-    setActiveTab('improve');
-    setImproving(true);
-    try {
-      const data = await fetchApi('/api/suggest-improvements', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item, language: i18n.language, profile })
-      });
-      if (data.advice) {
-        // Since we can generate multiple times, let's just keep the last improvement or append to basic advice.
-        const baseAdvice = item.advice ? item.advice.split("Improve!:")[0] : "";
-        await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), {
-          advice: baseAdvice + "\n\nImprove!: " + data.advice
-        });
-        
-        // Add items to shopping list if internet item
-        if (data.itemsToBuy && data.itemsToBuy.length > 0) {
-          for (const buyItem of data.itemsToBuy) {
-            const newRef = doc(collection(db, `users/${userId}/shoppingItems`));
-            await setDoc(newRef, {
-              userId,
-              name: buyItem.name,
-              reason: buyItem.reason,
-              createdAt: serverTimestamp()
-            });
-          }
-          toast.success(t('added_to_shopping_list', 'Added to shopping list'));
-        }
-      }
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setImproving(false);
-    }
-  };
-
-  const openInfo = () => {
-    setActiveTab('info');
-    setShowAdvice(true);
-  };
-
   const handleUpdateImage = async (newBase64: string) => {
     try {
       await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), {
@@ -288,13 +171,6 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
     } catch (e: any) {
       toast.error(e.message);
     }
-  };
-
-  const getRatingColor = (rating: number) => {
-    if (rating >= 5) return 'text-green-500';
-    if (rating >= 4) return 'text-blue-400';
-    if (rating >= 3) return 'text-orange-400';
-    return 'text-red-500';
   };
 
   return (
@@ -420,7 +296,7 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
       {item.type === 'Duplicate' ? (
         <div className="px-1 py-1">
           <p className="text-red-400 font-bold text-xs uppercase text-center">{t('delete', 'DELETE')}</p>
-          <p className="text-red-400/70 text-[10px] text-center">{item.advice || t('copy_detected', 'Copy detected')}</p>
+          <p className="text-red-400/70 text-[10px] text-center">{t('copy_detected', 'Copy detected')}</p>
         </div>
       ) : (
       <>
@@ -432,138 +308,8 @@ export function DraggableItem(props: { item: WardrobeItem, userId: string, profi
               #{item.displayId}
             </span>
           )}
-          {item.rating ? (
-             <div className="flex items-center gap-1">
-                <span className={cn("text-xs font-black tracking-tighter", getRatingColor(item.rating))}>
-                  {item.rating.toFixed(1)}
-                </span>
-                <Star className={cn("w-3 h-3 fill-current", getRatingColor(item.rating))} strokeWidth={2} />
-             </div>
-          ) : (
-             <span className="text-[9px] text-[#84917a] uppercase font-black tracking-widest opacity-50 italic">No Rank</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={openInfo} title={t('info')} className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-[#d2d9c8] transition-colors text-[#6b7863] border border-[#d2d9c8]">
-            <Info className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
-      
-      {showAdvice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#e4ebd8]/80 backdrop-blur-sm" onClick={() => setShowAdvice(false)}>
-          <div className="bg-[#eef2e6] border border-[#d2d9c8] rounded-3xl overflow-hidden w-[90vw] md:w-[70vw] max-w-4xl shadow-2xl relative flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-            <div className="flex p-2 bg-slate-800/50 border-b border-[#d2d9c8]/50">
-               <button 
-                  onClick={() => setActiveTab('info')}
-                  className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors", activeTab === 'info' ? "bg-[#d2d9c8] text-[#2b3327]" : "text-[#6b7863] hover:text-[#505c4a]")}
-               >
-                  Info
-               </button>
-               <button 
-                  onClick={() => setActiveTab('improve')}
-                  className={cn("flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors", activeTab === 'improve' ? "bg-[#6b8555] text-white" : "text-[#6b7863] hover:text-[#505c4a]")}
-               >
-                  Improve
-               </button>
-               <button onClick={() => setShowAdvice(false)} className="px-4 text-[#84917a] hover:text-[#2b3327] transition-colors">
-                 <X size={20} />
-               </button>
-            </div>
-            
-            <div className="p-6 md:p-8 overflow-y-auto custom-scrollbar">
-               {activeTab === 'info' ? (
-                  <div className="flex flex-col items-center">
-                    {item.displayId && (
-                       <h2 className="text-3xl font-black text-[#2b3327] uppercase tracking-tighter mb-4">
-                         {item.type === 'Look' ? t("look_title", "ОБРАЗ") : t("item_title", "ВЕЩЬ")} #{item.displayId}
-                       </h2>
-                    )}
-                    {item.rating ? (
-                       <>
-                           <div className="w-24 h-24 rounded-full border-[6px] flex items-center justify-center mb-6" style={{ borderColor: item.rating! >= 4 ? '#22c55e' : item.rating! >= 3 ? '#f59e0b' : '#ef4444' }}>
-                              <span className="text-4xl font-black text-[#2b3327]">{item.rating!.toFixed(1)}</span>
-                           </div>
-                         <p className="text-[#505c4a] whitespace-pre-wrap md:text-lg leading-relaxed text-center">
-                            {item.advice ? item.advice.split('Improve!:')[0] : t('no_advice', 'No advice yet. AI is still processing.')}
-                         </p>
-
-                         {item.type === 'Look' && item.itemsIds && item.itemsIds.length > 0 && (
-                          <div className="mt-8 border-t border-[#d2d9c8]/50 pt-6 w-full text-center">
-                            <h4 className="text-sm font-bold text-[#6b7863] uppercase tracking-widest mb-4">{t('look_composition', 'Состав образа:')}</h4>
-                            <div className="flex flex-wrap gap-2 justify-center">
-                              {item.itemsIds.map(id => {
-                                const found = allItems?.find(x => x.id === id);
-                                return (
-                                  <span key={id} className="bg-white text-[#556943] border border-[#d2d9c8] px-3 py-1.5 rounded-xl text-xs font-bold tracking-wider">
-                                    {found ? `${found.category} #${found.displayId || '...'}` : `Item #${id.slice(0, 4)}`}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {item.type === 'Item' && item.usedInLooks && item.usedInLooks.length > 0 && (
-                          <div className="mt-8 border-t border-[#d2d9c8]/50 pt-6 w-full text-center">
-                            <h4 className="text-sm font-bold text-[#6b7863] uppercase tracking-widest mb-4">{t('used_in_looks', 'Составлен в образах:')}</h4>
-                            <div className="flex flex-wrap gap-2 justify-center">
-                              {item.usedInLooks.map(id => {
-                                const found = allItems?.find(x => x.id === id);
-                                 return (
-                                  <span key={id} className="bg-white text-purple-400 border border-[#d2d9c8] px-3 py-1.5 rounded-xl text-xs font-bold tracking-wider">
-                                     {found && found.displayId ? `${t("look_title", "ОБРАЗ")} #${found.displayId}` : `${t("look_title", "ОБРАЗ")} #${id.slice(0,4)}`}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                       </>
-                    ) : (
-                       <div className="text-center">
-                           <p className="text-[#6b7863] mb-4">
-                            {item.category === 'Processing...' || item.category === 'Not Analyzed'
-                               ? t('not_analyzed_msg', 'This image has not been analyzed by AI yet.') 
-                               : t('no_score_yet', 'Item has not been scored yet.')}
-                          </p>
-                          <button 
-                            onClick={item.category === 'Processing...' || item.category === 'Not Analyzed' ? handleRetryAnalyze : handleEvaluate} 
-                            disabled={evaluating} 
-                            className="px-8 py-3 bg-[#6b8555] text-white font-bold uppercase tracking-widest text-sm rounded-full"
-                          >
-                             {evaluating 
-                                ? t('evaluating', 'Processing...') 
-                                : item.category === 'Processing...' || item.category === 'Not Analyzed'
-                                   ? t('analyze_now', 'Analyze Image') 
-                                   : t('evaluate', 'Score Now')}
-                          </button>
-                       </div>
-                    )}
-                  </div>
-               ) : (
-                  <div className="flex flex-col items-center max-w-2xl mx-auto w-full">
-                     <h3 className="text-xl font-black text-[#2b3327] uppercase tracking-tighter mb-6 text-center">Get Better</h3>
-                     <button 
-                        onClick={handleImprove} 
-                        disabled={improving} 
-                        className="mb-8 px-8 py-4 bg-[#6b8555] hover:bg-[#556943] transition-colors text-white font-bold uppercase tracking-widest text-sm rounded-full w-full sm:w-auto shadow-lg shadow-[#6b8555]/20"
-                     >
-                        {improving ? 'Generating Advice...' : 'Suggest Improvements'}
-                     </button>
-                     {item.advice && item.advice.includes("Improve!") && (
-                       <div className="bg-slate-800/50 p-6 rounded-2xl border border-[#d2d9c8] w-full">
-                         <p className="text-[#384232] whitespace-pre-wrap text-md leading-relaxed">
-                            {item.advice.split("Improve!:")[1]}
-                         </p>
-                       </div>
-                     )}
-                  </div>
-               )}
-            </div>
-          </div>
-        </div>
-      )}
       </>
       )}
 

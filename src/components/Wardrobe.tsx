@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
 import { WardrobeItem, Outfit } from "../lib/hooks";
 import { useTranslation } from "react-i18next";
@@ -8,21 +8,16 @@ import {
   UploadCloud,
   DownloadCloud,
   Image as ImageIcon,
-  Loader2,
-  Clock,
 } from "lucide-react";
 import { db } from "../firebase";
 import {
   doc,
   setDoc,
-  updateDoc,
   collection,
   serverTimestamp,
-  arrayUnion,
   deleteDoc,
 } from "firebase/firestore";
 import { toast } from "sonner";
-import { fetchApi } from "../lib/utils";
 import { CropEditor } from "./CropEditor";
 
 const getResizedBase64 = (dataUrl: string, maxDim = 800): Promise<string> => {
@@ -51,40 +46,6 @@ const getResizedBase64 = (dataUrl: string, maxDim = 800): Promise<string> => {
   });
 };
 
-const cropImage = async (base64: string, boundingBox: number[]): Promise<string> => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx || !boundingBox || boundingBox.length !== 4) return resolve(base64);
-
-      let [ymin, xmin, ymax, xmax] = boundingBox;
-      ymin = Math.max(0, Math.min(1, ymin));
-      xmin = Math.max(0, Math.min(1, xmin));
-      ymax = Math.max(0, Math.min(1, ymax));
-      xmax = Math.max(0, Math.min(1, xmax));
-      
-      if (ymin >= ymax || xmin >= xmax) {
-        return resolve(base64);
-      }
-
-      const x = Math.max(0, xmin * img.width);
-      const y = Math.max(0, ymin * img.height);
-      const w = Math.min(img.width, (xmax - xmin) * img.width);
-      const h = Math.min(img.height, (ymax - ymin) * img.height);
-
-      canvas.width = w;
-      canvas.height = h;
-      
-      ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/webp', 0.9));
-    };
-    img.onerror = () => resolve(base64);
-    img.src = base64;
-  });
-};
-
 export function Wardrobe({
   items,
   outfits,
@@ -94,19 +55,12 @@ export function Wardrobe({
   outfits: Outfit[];
   userId: string;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const [uploading, setUploading] = useState(false);
   const [imageSrcQueue, setImageSrcQueue] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<
     "my_looks" | "my_items" | "internet"
   >("my_looks");
-  const [reanalyzeStatus, setReanalyzeStatus] = useState<{
-    total: number;
-    current: number;
-    currentItemId: string;
-    logs: string[];
-  } | null>(null);
-  const abortRef = useRef(false);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length === 0) return;
@@ -136,7 +90,6 @@ export function Wardrobe({
     const newRef = doc(collection(db, `users/${userId}/wardrobeItems`));
 
     try {
-      // Optimistic instant save
       const initialType = activeTab === "my_looks" ? "Look" : "Item";
       await setDoc(newRef, {
         userId,
@@ -177,7 +130,6 @@ export function Wardrobe({
     return item.source === "internet";
   });
 
-  // --- Cleanup Orphaned Items ---
   useEffect(() => {
     if (!userId || items.length === 0) return;
 
@@ -185,7 +137,6 @@ export function Wardrobe({
       const allLookIds = new Set(items.filter(i => i.type === "Look").map(i => i.id));
       const orphanedItems = items.filter(i => {
         if (i.type === "Item" && Array.isArray(i.usedInLooks) && i.usedInLooks.length > 0) {
-          // If all looks that use this item are gone, it's orphaned
           return i.usedInLooks.every(lookId => !allLookIds.has(lookId));
         }
         return false;
@@ -205,246 +156,7 @@ export function Wardrobe({
     };
 
     cleanupOrphanedItems();
-  }, [items, userId, db]);
-  // ------------------------------
-
-  const handleReanalyzeMissed = async () => {
-    const toAnalyze = items.filter(i => i.category === 'Processing...' || i.category === 'Not Analyzed');
-    if (toAnalyze.length === 0) {
-      toast.info("No items to analyze.");
-      return;
-    }
-
-    abortRef.current = false;
-    setReanalyzeStatus({
-      total: toAnalyze.length,
-      current: 0,
-      currentItemId: "",
-      logs: ["Starting database re-evaluation..."],
-    });
-    let successCount = 0;
-
-    // Build context of existing looks for duplicate detection
-    const existingLooks = items
-      .filter((i) => i.type === "Look")
-      .map((i) => ({
-        id: i.id,
-        category: i.category,
-        color: i.color,
-        tags: i.tags,
-      }));
-
-    const existingItemsForAI = items
-      .filter((i) => i.type === "Item")
-      .map((i) => ({
-        id: i.id,
-        category: i.category,
-        color: i.color,
-        tags: i.tags,
-      }));
-
-    // Process in batches of 3 to speed up, while avoiding simple rate limits
-    let completedCount = 0;
-    const batchSize = 1;
-
-    for (let i = 0; i < toAnalyze.length; i += batchSize) {
-      if (abortRef.current) {
-        setReanalyzeStatus((prev) =>
-          prev
-            ? {
-                ...prev,
-                logs: [...prev.logs, `CANCELED BY USER.`],
-              }
-            : null,
-        );
-        break;
-      }
-
-      const batch = toAnalyze.slice(i, i + batchSize);
-
-      setReanalyzeStatus((prev) =>
-        prev
-          ? {
-              ...prev,
-              logs: [
-                ...prev.logs,
-                `Starting batch ${Math.floor(i / batchSize) + 1} (${batch.length} items)...`,
-                `Sending ${batch.length} images to AI for visual analysis...`,
-              ],
-            }
-          : null,
-      );
-
-      const promises = batch.map(async (item) => {
-        if (abortRef.current) return;
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 180000); // 180 seconds timeout
-
-          const aiData = await fetchApi("/api/analyze-image", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              imageBase64: item.imageUrl,
-              language: i18n.language,
-              existingLooks: existingLooks.filter(l => l.id !== item.id),
-              existingItems: existingItemsForAI.filter(i => i.id !== item.id),
-            }),
-            signal: controller.signal
-          });
-          clearTimeout(timeoutId);
-
-          if (abortRef.current) return;
-          const finalType =
-            aiData.type === "Duplicate"
-              ? "Duplicate"
-              : aiData.type === "Look"
-                ? "Look"
-                : "Item";
-                
-          const newlyExtractedItemIds: string[] = [];
-
-          if (
-            aiData.type === "Look" &&
-            aiData.extractedItems &&
-            Array.isArray(aiData.extractedItems)
-          ) {
-            const itemPromises = aiData.extractedItems.map(
-              async (extractedItem: any) => {
-                if (extractedItem.matchedExistingItemId) {
-                  const matchedId = extractedItem.matchedExistingItemId;
-                  newlyExtractedItemIds.push(matchedId);
-                  try {
-                    const itemRef = doc(db, `users/${userId}/wardrobeItems`, matchedId);
-                    await updateDoc(itemRef, {
-                      usedInLooks: arrayUnion(item.id)
-                    });
-                  } catch (e) {
-                    console.error("error updating matched item", e);
-                  }
-                  return;
-                }
-                
-                const itemRef = doc(
-                  collection(db, `users/${userId}/wardrobeItems`),
-                );
-                newlyExtractedItemIds.push(itemRef.id);
-                try {
-                  let finalImageUrl = item.imageUrl;
-                  if (extractedItem.boundingBox && Array.isArray(extractedItem.boundingBox)) {
-                    finalImageUrl = await cropImage(item.imageUrl, extractedItem.boundingBox);
-                  }
-    
-                  return await setDoc(itemRef, {
-                    userId,
-                    imageUrl: finalImageUrl,
-                    type: "Item",
-                    category: String(
-                      extractedItem.category || extractedItem.name || "Unknown",
-                    ).substring(0, 120),
-                    color: String(extractedItem.color || "Unknown").substring(
-                      0,
-                      120,
-                    ),
-                    source: "my",
-                    tags: [
-                      String(extractedItem.attributes || "").substring(0, 50),
-                    ].filter(Boolean),
-                    rating: 0,
-                    advice: t("extracted_from_look", "Extracted from Look"),
-                    createdAt: serverTimestamp(),
-                    usedInLooks: [item.id]
-                  });
-                } catch (e) {
-                  console.error("extracted image setDoc Error:", e);
-                  throw e;
-                }
-              },
-            );
-            await Promise.all(itemPromises);
-          }
-
-          const docUpdates: any = {
-            type: finalType,
-            category: String(aiData.category || "Other").substring(0, 120),
-            color: String(aiData.color || "Unknown").substring(0, 120),
-            tags: Array.isArray(aiData.tags)
-              ? aiData.tags.map((t) => String(t).substring(0, 50)).slice(0, 20)
-              : [],
-            rating:
-              typeof aiData.rating === "number"
-                ? aiData.rating
-                : parseFloat(aiData.rating) || 0,
-            advice: String(aiData.advice || "").substring(0, 4000),
-          };
-          if (finalType === "Look" && newlyExtractedItemIds.length > 0) {
-            docUpdates.itemsIds = newlyExtractedItemIds;
-          }
-          if (finalType === "Duplicate" && aiData.duplicateOfId) {
-            docUpdates.duplicateOfId = aiData.duplicateOfId;
-          }
-
-          await updateDoc(doc(db, `users/${userId}/wardrobeItems/${item.id}`), docUpdates);
-
-          if (abortRef.current) return;
-
-          successCount++;
-          completedCount++;
-
-          setReanalyzeStatus((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  current: completedCount,
-                  logs: [
-                    ...prev.logs,
-                    `Success! Classified item as ${finalType}. Rating: ${aiData.rating || "N/A"}`,
-                  ],
-                }
-              : null,
-          );
-        } catch (e: any) {
-          if (abortRef.current) return;
-          console.error("Re-analyze failed for", item.id, e);
-          completedCount++;
-          setReanalyzeStatus((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  current: completedCount,
-                  logs: [
-                    ...prev.logs,
-                    `Error on item ${item.id.slice(0, 5)}: ${e.message}`,
-                  ],
-                }
-              : null,
-          );
-        }
-      });
-
-      await Promise.all(promises);
-    }
-
-    setReanalyzeStatus((prev) =>
-      prev
-        ? {
-            ...prev,
-            logs: [
-              ...prev.logs,
-              abortRef.current
-                ? `Process aborted. Completed ${successCount} items.`
-                : `Done. Processed ${successCount}/${toAnalyze.length} successfully.`,
-            ],
-          }
-        : null,
-    );
-
-    toast.success(
-      abortRef.current
-        ? `Analysis aborted.`
-        : `Analysis complete. Processed ${successCount}/${toAnalyze.length}`,
-    );
-  };
+  }, [items, userId]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -484,95 +196,7 @@ export function Wardrobe({
             {t("internet_looks", "Из Интернета")}
           </button>
         </div>
-        <button
-          onClick={handleReanalyzeMissed}
-          disabled={!!reanalyzeStatus}
-          className="flex items-center gap-2 px-6 py-2.5 bg-white text-[#556943] hover:text-[#455438] border border-[#d2d9c8] hover:border-[#6b8555]/50 rounded-full text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-50"
-        >
-          {!!reanalyzeStatus
-            ? t("evaluating", "Оценка...")
-            : t("reanalyze_all", "Анализировать Базу")}
-        </button>
       </div>
-
-      {reanalyzeStatus && (
-        <div className="fixed inset-0 z-50 bg-white/90 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#eef2e6] border border-[#d2d9c8] p-6 rounded-3xl w-full max-w-lg flex flex-col gap-4">
-            <h2 className="text-xl font-black text-[#2b3327] uppercase tracking-tighter">
-              {t("reanalyzing", "Re-evaluating DB...")}
-            </h2>
-            <div className="w-full bg-white rounded-full h-2 overflow-hidden">
-              <div
-                className="bg-[#6b8555] h-full transition-all"
-                style={{
-                  width: `${(reanalyzeStatus.current / reanalyzeStatus.total) * 100}%`,
-                }}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-[#556943] font-bold uppercase tracking-widest flex items-center gap-2">
-                {reanalyzeStatus.current < reanalyzeStatus.total &&
-                  !abortRef.current && (
-                    <Loader2 size={14} className="animate-spin text-[#6b8555]" />
-                  )}
-                Processing {reanalyzeStatus.current} / {reanalyzeStatus.total}
-              </p>
-              {reanalyzeStatus.current < reanalyzeStatus.total &&
-                !abortRef.current && (
-                  <p className="text-xs text-[#84917a] font-medium flex items-center gap-1">
-                    <Clock size={12} />~
-                    {Math.ceil(
-                      ((reanalyzeStatus.total - reanalyzeStatus.current) * 2) /
-                        60,
-                    )}{" "}
-                    min left
-                  </p>
-                )}
-            </div>
-            <div className="bg-[#e4ebd8] border border-[#d2d9c8] rounded-xl p-4 h-48 overflow-y-auto flex flex-col gap-2 font-mono text-xs">
-              {reanalyzeStatus.logs.map((log, i) => (
-                <div key={i} className="text-[#6b7863]">
-                  {log}
-                </div>
-              ))}
-              <div
-                ref={(el) => {
-                  el?.scrollIntoView({ behavior: "smooth" });
-                }}
-              />
-            </div>
-            <p className="text-[10px] text-[#84917a] text-center leading-tight">
-              {t(
-                "cancel_explanation",
-                "Если вы нажмете Отмена, процесс остановится. Уже оцененные вещи сохранятся в базе.",
-              )}
-            </p>
-            {reanalyzeStatus.current === reanalyzeStatus.total ||
-            abortRef.current ? (
-              <button
-                onClick={() => setReanalyzeStatus(null)}
-                className="w-full mt-2 py-3 bg-[#6b8555] hover:bg-[#556943] text-white font-black uppercase tracking-widest text-xs rounded-xl transition-colors"
-              >
-                {t("admin_close", "Close")}
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  abortRef.current = true;
-                  setReanalyzeStatus((prev) =>
-                    prev
-                      ? { ...prev, logs: [...prev.logs, "Stopping..."] }
-                      : null,
-                  );
-                }}
-                className="w-full mt-2 py-3 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-black uppercase tracking-widest text-xs rounded-xl transition-colors"
-              >
-                {t("cancel", "Отмена")}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-6 relative">
         {currentImageSrc && (
