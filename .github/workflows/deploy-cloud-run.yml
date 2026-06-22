@@ -34,14 +34,11 @@ jobs:
         run: |-
           gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-      - name: Deploy to Cloud Run
-        id: deploy
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.SERVICE }}
-          region: ${{ env.REGION }}
-          source: ./
-          flags: '--port=3000 --allow-unauthenticated'
+      - name: Clear problematic annotations
+        run: gcloud run services update ${{ env.SERVICE }} --region ${{ env.REGION }} --remove-annotations "[run.googleapis.com/sources]" || true
 
-      - name: Show Output
-        run: echo ${{ steps.deploy.outputs.url }}
+      - name: Build and Deploy to Cloud Run
+        run: |
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE }}:${{ github.sha }}"
+          gcloud builds submit --tag $IMAGE .
+          gcloud run deploy ${{ env.SERVICE }} --image $IMAGE --region ${{ env.REGION }} --port 3000 --allow-unauthenticated
