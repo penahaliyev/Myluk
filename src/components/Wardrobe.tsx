@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import { CropEditor } from "./CropEditor";
 
-const getResizedBase64 = (dataUrl: string, maxDim = 800): Promise<string> => {
+const getResizedBase64 = (dataUrl: string, targetSizeKb = 500, maxDim = 1600): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -40,7 +40,21 @@ const getResizedBase64 = (dataUrl: string, maxDim = 800): Promise<string> => {
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve(dataUrl);
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
+
+      // Base64 encoding adds ~33% size to the original binary size
+      // 500 KB binary = 500 * 1024 bytes. Maximum Base64 string length ~ 500 * 1024 * 1.37
+      const MAX_BASE64_LENGTH = targetSizeKb * 1024 * 1.37;
+      
+      let quality = 0.95;
+      let data = canvas.toDataURL('image/jpeg', quality);
+      
+      // Reduce quality iteratively if it exceeds the target size
+      while (data.length > MAX_BASE64_LENGTH && quality > 0.3) {
+        quality -= 0.1;
+        data = canvas.toDataURL('image/jpeg', quality);
+      }
+      
+      resolve(data);
     };
     img.src = dataUrl;
   });
@@ -86,7 +100,7 @@ export function Wardrobe({
   const handleUploadCropped = async (croppedImageBase64: string) => {
     setImageSrcQueue((prev) => prev.slice(1));
 
-    const compressedBase64 = await getResizedBase64(croppedImageBase64, 800);
+    const compressedBase64 = await getResizedBase64(croppedImageBase64, 500, 1600);
     const newRef = doc(collection(db, `users/${userId}/wardrobeItems`));
 
     try {
